@@ -91,6 +91,7 @@ if archivos_lp:
         df['Horario'] = df.apply(clasificar, axis=1)
 
         # Crear dataframe reducido con nombre de archivo como columna
+        nombre_archivo = archivo.name.split('.')[0]
         df_reducido = df[['Fecha', 'Hora', 'Horario', '+P/kW']].copy()
         df_reducido = df_reducido.rename(columns={'+P/kW': nombre_archivo})
 
