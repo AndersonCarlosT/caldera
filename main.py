@@ -92,7 +92,7 @@ if archivos_lp:
 
         # Crear dataframe reducido con nombre de archivo como columna
         df_reducido = df[['Fecha', 'Hora', 'Horario', '+P/kW']].copy()
-        df_reducido = df_reducido.rename(columns={'+P/kW': archivo.name})
+        df_reducido = df_reducido.rename(columns={'+P/kW': nombre_archivo})
 
         dfs.append(df_reducido)
 
