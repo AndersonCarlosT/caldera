@@ -3,7 +3,7 @@ import pandas as pd
 import io
 from datetime import datetime
 
-st.title("📊 Comparador de Perfiles de Carga - Orden Real Perfil (00:00 al final)")
+st.title("📊 Comparador de Perfiles de Carga - Múltiples archivos .LP (Orden y Nombres Reales)")
 
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
 
@@ -38,7 +38,7 @@ if archivos_lp:
     # DataFrame base para unir los archivos
     df_final = None
 
-    for idx, archivo in enumerate(archivos_lp):
+    for archivo in archivos_lp:
         contenido = archivo.read().decode('utf-8')
         lineas = contenido.splitlines()
 
@@ -76,7 +76,7 @@ if archivos_lp:
         df_mes['Fecha'] = df_mes['Fecha/Hora'].dt.strftime('%d/%m/%Y')
         df_mes['Hora'] = df_mes['Fecha/Hora'].dt.strftime('%H:%M:%S')
         df_mes['Dia'] = df_mes['Fecha/Hora'].dt.day
-        df_mes['Dia_semana'] = df_mes['Fecha/Hora'].dt.dayofweek  # Lunes=0, Domingo=6
+        df_mes['Dia_semana'] = df_mes['Fecha/Hora'].dt.dayofweek
 
         # Clasificación HP / HFP con feriados y domingos
         def clasificar(row):
@@ -94,18 +94,18 @@ if archivos_lp:
 
         df_mes['Horario'] = df_mes.apply(clasificar, axis=1)
 
-        # Crear columna auxiliar para orden personalizado
+        # Columna auxiliar para ordenar las horas correctamente
         def hora_orden(hora_str):
             if hora_str == "00:00:00":
-                return 99999  # Máximo valor para que quede al final
+                return 99999  # Forzar al final
             else:
                 h, m, s = map(int, hora_str.split(":"))
-                return h * 60 + m  # Minutos desde las 00:00
+                return h * 60 + m
 
         df_mes['Orden_Hora'] = df_mes['Hora'].apply(hora_orden)
 
-        # Definir nombre de columna para este archivo
-        nombre_columna = f"+P/kW_{idx+1}"
+        # Definir nombre de columna como el nombre real del archivo
+        nombre_columna = archivo.name
 
         # Preparar dataframe para merge
         df_merge = df_mes[['Fecha', 'Hora', 'Horario', 'Orden_Hora', '+P/kW']].copy()
@@ -114,14 +114,13 @@ if archivos_lp:
         if df_final is None:
             df_final = df_merge
         else:
-            # Unir respetando Fecha, Hora, Horario sin desordenar
             df_final = pd.merge(df_final, df_merge, on=['Fecha', 'Hora', 'Horario', 'Orden_Hora'], how='outer')
 
-    # Ordenar respetando secuencia natural de perfil: 00:15, ..., 23:45, 00:00
+    # Ordenar correctamente
     df_final = df_final.sort_values(by=['Fecha', 'Orden_Hora']).reset_index(drop=True)
     df_final = df_final.drop(columns=['Orden_Hora'])
 
     # Mostrar resultado
-    st.success(f"Comparativo de {len(archivos_lp)} archivos del mes de {mes_seleccionado} {anio_seleccionado} (orden real)")
+    st.success(f"Comparativo de {len(archivos_lp)} archivos del mes de {mes_seleccionado} {anio_seleccionado} (nombres reales de archivo)")
     st.write(f"Días feriados ingresados: {dias_feriados}")
     st.dataframe(df_final)
