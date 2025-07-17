@@ -118,4 +118,5 @@ if archivos_lp:
 
     # Mostrar resultado
     st.success(f"Comparativo de {len(archivos_lp)} archivos del mes de {mes_seleccionado} {anio_seleccionado} (orden conservado)")
-    st.write(f"D
+    st.write(f"Días feriados ingresados: {dias_feriados}")
+    st.dataframe(df_final)
