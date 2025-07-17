@@ -128,7 +128,7 @@ if archivos_lp and archivo_excel:
                 continue
 
             df_data = df_excel.iloc[fila_inicio:].copy()
-            df_data.columns = ['Index', 'Fecha', 'Hora', 'Col_D', 'Col_E']
+            df_data = df_data.rename(columns={1: 'Fecha', 2: 'Hora', 3: 'Col_D', 4: 'Col_E'})
 
             # Normalizar fechas y horas
             df_data['Fecha'] = pd.to_datetime(df_data['Fecha'], dayfirst=True, errors='coerce').dt.strftime('%d/%m/%Y')
