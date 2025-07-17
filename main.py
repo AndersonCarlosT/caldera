@@ -1,19 +1,13 @@
 import streamlit as st
 import pandas as pd
 import io
-from functools import reduce
-import re
 
-st.title("📊 Comparador de archivos .LP con Excel multi-hoja - Etapa 2 (corregido)")
+st.title("📊 Comparador de múltiples archivos .LP - Consolidación de +P/kW")
 
-# Múltiple subida de archivos LP
+# Múltiple subida de archivos
 archivos_lp = st.file_uploader("Sube uno o varios archivos .LP", type=["lp"], accept_multiple_files=True)
 
-# Subir archivo Excel adicional
-archivo_excel = st.file_uploader("Sube el archivo Excel con varias hojas", type=["xlsx"])
-
-if archivos_lp and archivo_excel:
-
+if archivos_lp:
     # Selector de mes y año
     meses = {
         "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
@@ -29,7 +23,7 @@ if archivos_lp and archivo_excel:
     with col2:
         anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
 
-    # Feriados
+    # Input de feriados
     feriados_input = st.text_input(f"Ingrese los días feriados de {mes_seleccionado} separados por comas (ejemplo: 5,7,15):")
 
     if feriados_input.strip() != "":
@@ -42,15 +36,11 @@ if archivos_lp and archivo_excel:
         dias_feriados = []
 
     dfs = []
-    nombres_lp = []
-
     for archivo in archivos_lp:
-        nombre_lp = archivo.name
-        nombres_lp.append(nombre_lp)
-
         contenido = archivo.read().decode('utf-8')
         lineas = contenido.splitlines()
 
+        # Buscar inicio de la tabla
         indice_inicio = None
         for i, linea in enumerate(lineas):
             if linea.strip().startswith("Fecha/Hora"):
@@ -64,21 +54,27 @@ if archivos_lp and archivo_excel:
         tabla = "\n".join(lineas[indice_inicio:])
         df = pd.read_csv(io.StringIO(tabla), sep=";", engine='python')
 
+        # Limpiar columnas y espacios
         df.columns = [col.strip() for col in df.columns]
         df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
 
+        # Eliminar la columna "+Q/kvar"
         if "+Q/kvar" in df.columns:
             df = df.drop(columns=["+Q/kvar"])
 
+        # Convertir Fecha/Hora
         df['Fecha/Hora'] = pd.to_datetime(df['Fecha/Hora'], format='%d/%m/%Y %H:%M:%S')
 
+        # Filtrar por mes y año
         df = df[(df['Fecha/Hora'].dt.month == numero_mes) & (df['Fecha/Hora'].dt.year == anio_seleccionado)]
 
+        # Separar Fecha y Hora
         df['Fecha'] = df['Fecha/Hora'].dt.strftime('%d/%m/%Y')
         df['Hora'] = df['Fecha/Hora'].dt.strftime('%H:%M:%S')
         df['Dia'] = df['Fecha/Hora'].dt.day
         df['Dia_semana'] = df['Fecha/Hora'].dt.dayofweek
 
+        # Clasificar HP / HFP
         def clasificar(row):
             dia = row['Dia']
             dia_semana = row['Dia_semana']
@@ -94,55 +90,19 @@ if archivos_lp and archivo_excel:
 
         df['Horario'] = df.apply(clasificar, axis=1)
 
+        # Crear dataframe reducido con nombre de archivo como columna
         df_reducido = df[['Fecha', 'Hora', 'Horario', '+P/kW']].copy()
-        df_reducido = df_reducido.rename(columns={'+P/kW': nombre_lp})
+        df_reducido = df_reducido.rename(columns={'+P/kW': archivo.name})
 
         dfs.append(df_reducido)
 
-    # Merge de todos los LPs
+    # Unir todos los archivos por Fecha y Hora
+    from functools import reduce
+
     df_final = reduce(lambda left, right: pd.merge(left, right, on=['Fecha', 'Hora', 'Horario'], how='outer'), dfs)
+
+    # Ordenar por Fecha y Hora
     df_final = df_final.sort_values(by=['Fecha', 'Hora']).reset_index(drop=True)
 
-    # Leer el Excel
-    excel = pd.ExcelFile(archivo_excel)
-
-    for nombre_lp in nombres_lp:
-        # Limpiar nombre (quitar número y extensión, convertir a mayúsculas)
-        nombre_base = re.sub(r'\d+', '', nombre_lp)  # Elimina números
-        nombre_base = nombre_base.replace('.LP', '').replace('.lp', '').strip().upper()
-
-        if nombre_base in excel.sheet_names:
-            df_excel = pd.read_excel(archivo_excel, sheet_name=nombre_base, header=None)
-
-            # Buscar la fila donde empiezan las fechas en columna B
-            fila_inicio = None
-            for i, fila in df_excel.iterrows():
-                valor = str(fila[1]).strip()
-                fecha = pd.to_datetime(valor, dayfirst=True, errors='coerce')
-                if pd.notnull(fecha):
-                    fila_inicio = i
-                    break
-
-            if fila_inicio is None:
-                st.warning(f"No se encontró data válida en la hoja {nombre_base}. Revisa si la columna B tiene fechas.")
-                continue
-
-            df_data = df_excel.iloc[fila_inicio:].copy()
-            df_data = df_data.rename(columns={1: 'Fecha', 2: 'Hora', 3: 'Col_D', 4: 'Col_E'})
-
-            # Normalizar fechas y horas
-            df_data['Fecha'] = pd.to_datetime(df_data['Fecha'], dayfirst=True, errors='coerce').dt.strftime('%d/%m/%Y')
-            df_data['Hora'] = df_data['Hora'].astype(str).str.strip()
-
-            # Hacer merge con df_final
-            df_merge = df_final.merge(df_data[['Fecha', 'Hora', 'Col_D', 'Col_E']], on=['Fecha', 'Hora'], how='left')
-
-            # Agregar las columnas con nombres correspondientes
-            df_final[f"{nombre_lp} (D3)"] = df_merge['Col_D']
-            df_final[f"{nombre_lp} (E3)"] = df_merge['Col_E']
-
-        else:
-            st.warning(f"No se encontró la hoja '{nombre_base}' en el Excel.")
-
-    st.success("Proceso completado con datos del Excel agregados.")
+    st.success("Consolidación completada")
     st.dataframe(df_final)
