@@ -143,12 +143,13 @@ if archivos_lp and archivo_excel:
 
                 df_hoja = df_hoja.drop(columns=['FechaTmp', 'HoraTmp'])
 
-                # Crear nombres de columnas D y E usando nombre de hoja
+                # Crear nombres de columnas D, E y F usando nombre de hoja
                 nombre_d = f"{nombre_base} 1 (D3)"
                 nombre_e = f"{nombre_base} 2 (D3)"
+                nombre_f = f"{nombre_base} 3 (D3)"
 
-                df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4]].copy()
-                df_hoja_out = df_hoja_out.rename(columns={3: nombre_d, 4: nombre_e})
+                df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4, 5]].copy()
+                df_hoja_out = df_hoja_out.rename(columns={3: nombre_d, 4: nombre_e, 5: nombre_f})
 
                 # Merge al dataframe final
                 df_final = pd.merge(df_final, df_hoja_out, on=['Fecha', 'Hora'], how='left')
@@ -165,16 +166,18 @@ if archivos_lp and archivo_excel:
 
         nombre_d = f"{nombre_base} 1 (D3)"
         nombre_e = f"{nombre_base} 2 (D3)"
+        nombre_f = f"{nombre_base} 3 (D3)"
 
-        if nombre_d in cols and nombre_e in cols:
+        if nombre_d in cols and nombre_e in cols and nombre_f in cols:
             idx_lp = cols.index(nombre_lp)
 
             # Quitar D3 de su posición actual
             cols.remove(nombre_d)
             cols.remove(nombre_e)
+            cols.remove(nombre_f)
 
             # Insertar D3 al lado del LP
-            cols = cols[:idx_lp + 1] + [nombre_d, nombre_e] + cols[idx_lp + 1:]
+            cols = cols[:idx_lp + 1] + [nombre_d, nombre_e, nombre_f] + cols[idx_lp + 1:]
 
     df_final = df_final[cols]
 
