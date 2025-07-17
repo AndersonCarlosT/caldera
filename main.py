@@ -4,13 +4,24 @@ import io
 from datetime import datetime
 import re
 
-st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (D3) + Factores")
+st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (D3) + Factores de Multiplicación")
 
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
-
 archivo_excel = st.file_uploader("Sube el archivo Excel con múltiples hojas", type=["xlsx"])
 
 if archivos_lp and archivo_excel:
+    # Factores fijos (no mostrados)
+    factores = {
+        "Acos 1.LP": 100,
+        "Acos 2.LP": 100,
+        "Nava 1.LP": 1,
+        "Nava 2.LP": 200,
+        "Ravira 1.LP": 120,
+        "Ravira 2.LP": 120,
+        "Canta 1.LP": 1,
+        "Canta 2.LP": 1
+    }
+
     # Selector de mes y año
     meses = {
         "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
@@ -37,7 +48,7 @@ if archivos_lp and archivo_excel:
     else:
         dias_feriados = []
 
-    df_lp = None
+    df_final = None
     nombres_lp = []
 
     for archivo in archivos_lp:
@@ -103,58 +114,77 @@ if archivos_lp and archivo_excel:
         df_merge = df_mes[['Fecha', 'Hora', 'Horario', 'Orden_Hora', '+P/kW']].copy()
         df_merge = df_merge.rename(columns={'+P/kW': nombre_columna})
 
-        if df_lp is None:
-            df_lp = df_merge
+        if df_final is None:
+            df_final = df_merge
         else:
-            df_lp = pd.merge(df_lp, df_merge, on=['Fecha', 'Hora', 'Horario', 'Orden_Hora'], how='outer')
+            df_final = pd.merge(df_final, df_merge, on=['Fecha', 'Hora', 'Horario', 'Orden_Hora'], how='outer')
 
-    df_lp = df_lp.sort_values(by=['Fecha', 'Orden_Hora']).reset_index(drop=True)
-    df_lp = df_lp.drop(columns=['Orden_Hora'])
+    df_final = df_final.sort_values(by=['Fecha', 'Orden_Hora']).reset_index(drop=True)
+    df_final = df_final.drop(columns=['Orden_Hora'])
 
     # Cargar el Excel con múltiples hojas
     excel_data = pd.ExcelFile(archivo_excel)
-
-    df_d3 = df_lp[['Fecha', 'Hora', 'Horario']].copy()
+    hojas_procesadas = set()
 
     for nombre_lp in nombres_lp:
-        nombre_base = re.sub(r'\d+', '', nombre_lp)  
+        nombre_base = re.sub(r'\d+', '', nombre_lp)
         nombre_base = nombre_base.replace('.LP', '').strip().upper()
 
         if nombre_base in excel_data.sheet_names:
-            df_hoja = pd.read_excel(archivo_excel, sheet_name=nombre_base, header=None)
+            if nombre_base not in hojas_procesadas:
+                hojas_procesadas.add(nombre_base)
 
-            df_hoja['FechaTmp'] = pd.to_datetime(df_hoja[1], errors='coerce')
-            df_hoja['HoraTmp'] = df_hoja[2].astype(str).str.strip()
+                df_hoja = pd.read_excel(archivo_excel, sheet_name=nombre_base, header=None)
 
-            df_hoja = df_hoja[df_hoja['FechaTmp'].notna() & df_hoja['HoraTmp'].str.match(r'^\d{2}:\d{2}(:\d{2})?$')]
+                df_hoja['FechaTmp'] = pd.to_datetime(df_hoja[1], errors='coerce')
+                df_hoja['HoraTmp'] = df_hoja[2].astype(str).str.strip()
 
-            df_hoja['Fecha'] = df_hoja['FechaTmp'].dt.strftime('%d/%m/%Y')
-            df_hoja['Hora'] = df_hoja['HoraTmp']
+                df_hoja = df_hoja[df_hoja['FechaTmp'].notna() & df_hoja['HoraTmp'].str.match(r'^\d{2}:\d{2}(:\d{2})?$')]
 
-            df_hoja = df_hoja.drop(columns=['FechaTmp', 'HoraTmp'])
+                df_hoja['Fecha'] = df_hoja['FechaTmp'].dt.strftime('%d/%m/%Y')
+                df_hoja['Hora'] = df_hoja['HoraTmp']
 
-            nombre_d = f"{nombre_base} 1 (D3)"
-            nombre_e = f"{nombre_base} 2 (D3)"
-            nombre_f = f"{nombre_base} 3 (D3)"
+                df_hoja = df_hoja.drop(columns=['FechaTmp', 'HoraTmp'])
 
-            df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4, 5]].copy()
-            df_hoja_out = df_hoja_out.rename(columns={3: nombre_d, 4: nombre_e, 5: nombre_f})
+                nombre_d = f"{nombre_base} 1 (D3)"
+                nombre_e = f"{nombre_base} 2 (D3)"
+                nombre_f = f"{nombre_base} 3 (D3)"
 
-            df_d3 = pd.merge(df_d3, df_hoja_out, on=['Fecha', 'Hora'], how='left')
+                df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4, 5]].copy()
+                df_hoja_out = df_hoja_out.rename(columns={3: nombre_d, 4: nombre_e, 5: nombre_f})
+
+                df_final = pd.merge(df_final, df_hoja_out, on=['Fecha', 'Hora'], how='left')
         else:
             st.warning(f"No se encontró la hoja '{nombre_base}' en el Excel.")
 
-    # Definir los factores fijos
-    factores = {
-        "Acos 1.LP": 100,
-        "Acos 2.LP": 100,
-        "Nava 1.LP": 1,
-        "Nava 2.LP": 200,
-        "Ravira 1.LP": 120,
-        "Ravira 2.LP": 120,
-        "Canta 1.LP": 1,
-        "Canta 2.LP": 1
-    }
+    # Reordenar columnas para poner D3 al lado del archivo LP correspondiente
+    cols = df_final.columns.tolist()
+
+    for nombre_lp in nombres_lp:
+        nombre_base = re.sub(r'\d+', '', nombre_lp)
+        nombre_base = nombre_base.replace('.LP', '').strip().upper()
+
+        nombre_d = f"{nombre_base} 1 (D3)"
+        nombre_e = f"{nombre_base} 2 (D3)"
+        nombre_f = f"{nombre_base} 3 (D3)"
+
+        if nombre_d in cols and nombre_e in cols and nombre_f in cols:
+            idx_lp = cols.index(nombre_lp)
+
+            cols.remove(nombre_d)
+            cols.remove(nombre_e)
+            cols.remove(nombre_f)
+
+            cols = cols[:idx_lp + 1] + [nombre_d, nombre_e, nombre_f] + cols[idx_lp + 1:]
+
+    df_final = df_final[cols]
+
+    # Crear df_lp y df_d3
+    columnas_lp = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if col in nombres_lp]
+    df_lp = df_final[columnas_lp].copy()
+
+    columnas_d3 = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if "(D3)" in col]
+    df_d3 = df_final[columnas_d3].copy()
 
     # Multiplicación por factores
     for nombre_lp in nombres_lp:
@@ -162,25 +192,7 @@ if archivos_lp and archivo_excel:
         nueva_col = f"{nombre_lp} * Factor"
         df_lp[nueva_col] = df_lp[nombre_lp].astype(float) * factor
 
-    # Sumar las multiplicaciones por nombre base (sin número)
-    sumas_por_base = {}
-
-    for nombre_lp in nombres_lp:
-        nombre_base = re.sub(r'\d+', '', nombre_lp).replace('.LP', '').strip()
-
-        columna_factor = f"{nombre_lp} * Factor"
-
-        if nombre_base not in sumas_por_base:
-            sumas_por_base[nombre_base] = df_lp[columna_factor].copy()
-        else:
-            sumas_por_base[nombre_base] += df_lp[columna_factor]
-
-    # Agregar columnas de suma al df_lp
-    for nombre_base, suma in sumas_por_base.items():
-        df_lp[f"{nombre_base} (Total)"] = suma
-
-    # Mostrar resultados
-    st.subheader("Datos de archivos LP con multiplicación por factores y sumas por nombre base")
+    st.subheader("Datos de archivos LP con multiplicación por factores")
     st.dataframe(df_lp)
 
     st.subheader("Datos adicionales D3")
