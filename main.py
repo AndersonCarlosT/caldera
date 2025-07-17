@@ -119,11 +119,16 @@ if archivos_lp and archivo_excel:
         if base_nombre in xls.sheet_names:
             hoja_df = pd.read_excel(archivo_excel, sheet_name=base_nombre)
 
-            # Filtrar solo filas válidas (las que tienen fecha y hora en columnas B y C)
-            hoja_df = hoja_df.dropna(subset=[hoja_df.columns[1], hoja_df.columns[2]])
+            # Manejo seguro de fechas y horas en columnas B y C
+            fechas_col = pd.to_datetime(hoja_df.iloc[:, 1], errors='coerce')
+            horas_col = pd.to_datetime(hoja_df.iloc[:, 2], errors='coerce')
 
-            hoja_df['Fecha'] = pd.to_datetime(hoja_df.iloc[:, 1]).dt.strftime('%d/%m/%Y')
-            hoja_df['Hora'] = pd.to_datetime(hoja_df.iloc[:, 2]).dt.strftime('%H:%M:%S')
+            # Filtrar solo filas válidas (las que tienen fecha y hora real)
+            hoja_df = hoja_df[~fechas_col.isna() & ~horas_col.isna()].copy()
+
+            # Formatear fecha y hora
+            hoja_df['Fecha'] = fechas_col.dt.strftime('%d/%m/%Y')
+            hoja_df['Hora'] = horas_col.dt.strftime('%H:%M:%S')
 
             # Extraer columnas D y E
             datos_D = hoja_df.iloc[:, 3]
