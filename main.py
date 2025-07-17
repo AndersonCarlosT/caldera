@@ -115,30 +115,37 @@ if archivos_lp and archivo_excel:
     excel_data = pd.ExcelFile(archivo_excel)
 
     for nombre_lp in nombres_lp:
-        # Obtener nombre de hoja (quitando número y extensión, pasando a mayúsculas)
-        nombre_base = re.sub(r'\d+', '', nombre_lp)  # Quita números
+        nombre_base = re.sub(r'\d+', '', nombre_lp)  # Quitar números
         nombre_base = nombre_base.replace('.LP', '').strip().upper()
 
         if nombre_base in excel_data.sheet_names:
             df_hoja = pd.read_excel(archivo_excel, sheet_name=nombre_base, header=None)
 
-            # Filtrar solo las filas donde las columnas B y C no estén vacías
-            df_hoja = df_hoja[df_hoja[1].notna() & df_hoja[2].notna()]
+            # Convertir columna B a fecha
+            df_hoja['FechaTmp'] = pd.to_datetime(df_hoja[1], errors='coerce')
 
-            # Formatear las fechas de columna B a 'dd/mm/yyyy'
-            df_hoja['Fecha'] = pd.to_datetime(df_hoja[1]).dt.strftime('%d/%m/%Y')
-            df_hoja['Hora'] = pd.to_datetime(df_hoja[2]).dt.strftime('%H:%M:%S')
+            # Convertir columna C a texto de hora
+            df_hoja['HoraTmp'] = df_hoja[2].astype(str).str.strip()
 
-            # Extraer columnas D y E con nombres personalizados
+            # Filtrar solo filas válidas donde 'FechaTmp' no sea NaT y 'HoraTmp' tenga formato hora
+            df_hoja = df_hoja[df_hoja['FechaTmp'].notna() & df_hoja['HoraTmp'].str.match(r'^\d{2}:\d{2}(:\d{2})?$')]
+
+            # Formatear las columnas para hacer match
+            df_hoja['Fecha'] = df_hoja['FechaTmp'].dt.strftime('%d/%m/%Y')
+            df_hoja['Hora'] = df_hoja['HoraTmp']
+
+            # Eliminar temporales
+            df_hoja = df_hoja.drop(columns=['FechaTmp', 'HoraTmp'])
+
+            # Crear nombres de columnas D y E
             nombre_d = nombre_lp.replace('.LP', ' 1 (D3)')
             nombre_e = nombre_lp.replace('.LP', ' 2 (D3)')
 
             df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4]].copy()
             df_hoja_out = df_hoja_out.rename(columns={3: nombre_d, 4: nombre_e})
 
-            # Hacer merge al dataframe final
+            # Merge con df_final
             df_final = pd.merge(df_final, df_hoja_out, on=['Fecha', 'Hora'], how='left')
-
         else:
             st.warning(f"No se encontró la hoja '{nombre_base}' en el Excel.")
 
