@@ -1,71 +1,148 @@
 import streamlit as st
 import pandas as pd
 import io
-from datetime import datetime
 from functools import reduce
+import re
 
-st.title("📊 Segunda Etapa - Cruce con Excel adicional")
+st.title("📊 Comparador de archivos .LP con Excel multi-hoja - Etapa 2")
 
-# Asumimos que ya tienes el df_final de la etapa anterior
-# Para este ejemplo, vamos a pedir que lo cargues de nuevo aquí por simplicidad
+# Múltiple subida de archivos LP
+archivos_lp = st.file_uploader("Sube uno o varios archivos .LP", type=["lp"], accept_multiple_files=True)
 
-st.subheader("⚙️ Suba el DataFrame consolidado de los archivos LP (CSV temporal)")
+# Subir archivo Excel adicional
+archivo_excel = st.file_uploader("Sube el archivo Excel con varias hojas", type=["xlsx"])
 
-archivo_consolidado = st.file_uploader("Sube el archivo CSV consolidado de los LP", type=["csv"])
+if archivos_lp and archivo_excel:
 
-if archivo_consolidado is not None:
-    df_final = pd.read_csv(archivo_consolidado)
+    # Selector de mes y año
+    meses = {
+        "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
+        "Mayo": 5, "Junio": 6, "Julio": 7, "Agosto": 8,
+        "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
+    }
 
-    # Subir el Excel adicional
-    st.subheader("📂 Suba el archivo Excel con múltiples hojas")
-    excel_file = st.file_uploader("Sube el Excel", type=["xlsx"])
+    col1, col2 = st.columns(2)
+    with col1:
+        mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
+        numero_mes = meses[mes_seleccionado]
 
-    if excel_file is not None:
-        xls = pd.ExcelFile(excel_file)
+    with col2:
+        anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
 
-        # Identificar columnas LP en el dataframe consolidado
-        columnas_lp = [col for col in df_final.columns if col.endswith(".LP")]
+    # Feriados
+    feriados_input = st.text_input(f"Ingrese los días feriados de {mes_seleccionado} separados por comas (ejemplo: 5,7,15):")
 
-        for col_lp in columnas_lp:
-            nombre_base = col_lp.split()[0].upper()  # Ej: "ACOS" de "Acos 1.LP"
+    if feriados_input.strip() != "":
+        try:
+            dias_feriados = [int(x.strip()) for x in feriados_input.split(",")]
+        except:
+            st.error("Formato inválido. Escriba números separados por comas.")
+            dias_feriados = []
+    else:
+        dias_feriados = []
 
-            # Verificar si hay una hoja con ese nombre
-            if nombre_base in xls.sheet_names:
-                df_excel = pd.read_excel(excel_file, sheet_name=nombre_base, header=None)
+    dfs = []
+    nombres_lp = []
 
-                # Buscar dónde empiezan las filas válidas (asumimos que hay texto arriba)
-                # Buscamos filas donde la columna B tenga un valor tipo fecha
-                inicio_datos = None
-                for i, val in enumerate(df_excel[1]):
+    for archivo in archivos_lp:
+        nombre_lp = archivo.name
+        nombres_lp.append(nombre_lp)
+
+        contenido = archivo.read().decode('utf-8')
+        lineas = contenido.splitlines()
+
+        indice_inicio = None
+        for i, linea in enumerate(lineas):
+            if linea.strip().startswith("Fecha/Hora"):
+                indice_inicio = i
+                break
+
+        if indice_inicio is None:
+            st.error(f"No se encontró la cabecera 'Fecha/Hora' en el archivo {archivo.name}.")
+            continue
+
+        tabla = "\n".join(lineas[indice_inicio:])
+        df = pd.read_csv(io.StringIO(tabla), sep=";", engine='python')
+
+        df.columns = [col.strip() for col in df.columns]
+        df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+
+        if "+Q/kvar" in df.columns:
+            df = df.drop(columns=["+Q/kvar"])
+
+        df['Fecha/Hora'] = pd.to_datetime(df['Fecha/Hora'], format='%d/%m/%Y %H:%M:%S')
+
+        df = df[(df['Fecha/Hora'].dt.month == numero_mes) & (df['Fecha/Hora'].dt.year == anio_seleccionado)]
+
+        df['Fecha'] = df['Fecha/Hora'].dt.strftime('%d/%m/%Y')
+        df['Hora'] = df['Fecha/Hora'].dt.strftime('%H:%M:%S')
+        df['Dia'] = df['Fecha/Hora'].dt.day
+        df['Dia_semana'] = df['Fecha/Hora'].dt.dayofweek
+
+        def clasificar(row):
+            dia = row['Dia']
+            dia_semana = row['Dia_semana']
+            hora = pd.to_datetime(row['Hora'], format='%H:%M:%S').time()
+
+            if dia in dias_feriados or dia_semana == 6:
+                return "HFP"
+
+            if hora >= pd.to_datetime("23:15:00", format='%H:%M:%S').time() or hora <= pd.to_datetime("18:00:00", format='%H:%M:%S').time():
+                return "HFP"
+            else:
+                return "HP"
+
+        df['Horario'] = df.apply(clasificar, axis=1)
+
+        df_reducido = df[['Fecha', 'Hora', 'Horario', '+P/kW']].copy()
+        df_reducido = df_reducido.rename(columns={'+P/kW': nombre_lp})
+
+        dfs.append(df_reducido)
+
+    # Merge de todos los LPs
+    df_final = reduce(lambda left, right: pd.merge(left, right, on=['Fecha', 'Hora', 'Horario'], how='outer'), dfs)
+    df_final = df_final.sort_values(by=['Fecha', 'Hora']).reset_index(drop=True)
+
+    # Leer el Excel
+    excel = pd.ExcelFile(archivo_excel)
+
+    for nombre_lp in nombres_lp:
+        # Limpiar nombre (quitar número y extensión, convertir a mayúsculas)
+        nombre_base = re.sub(r'\d+', '', nombre_lp)  # Elimina números
+        nombre_base = nombre_base.replace('.LP', '').replace('.lp', '').strip().upper()
+
+        if nombre_base in excel.sheet_names:
+            df_excel = pd.read_excel(archivo_excel, sheet_name=nombre_base, header=None)
+
+            # Buscar la fila donde empiecen las fechas (por si hay encabezados de texto)
+            fila_inicio = None
+            for i, fila in df_excel.iterrows():
+                if isinstance(fila[1], pd.Timestamp) or isinstance(fila[1], str):
                     try:
-                        pd.to_datetime(val)
-                        inicio_datos = i
+                        pd.to_datetime(str(fila[1]), format='%d/%m/%Y')
+                        fila_inicio = i
                         break
                     except:
                         continue
 
-                if inicio_datos is None:
-                    st.warning(f"No se encontraron datos con fechas en la hoja {nombre_base}")
-                    continue
+            if fila_inicio is None:
+                st.warning(f"No se encontró data en la hoja {nombre_base}")
+                continue
 
-                # Leer solo los datos válidos
-                df_match = df_excel.iloc[inicio_datos:].copy()
-                df_match.columns = ['ColA', 'Fecha', 'Hora', 'D', 'E']
+            df_data = df_excel.iloc[fila_inicio:].copy()
+            df_data.columns = ['Index', 'Fecha', 'Hora', 'Col_D', 'Col_E']
+            df_data['Fecha'] = pd.to_datetime(df_data['Fecha']).dt.strftime('%d/%m/%Y')
+            df_data['Hora'] = df_data['Hora'].astype(str).str.strip()
 
-                # Convertir fechas y horas a string para hacer el match
-                df_match['Fecha'] = pd.to_datetime(df_match['Fecha']).dt.strftime('%d/%m/%Y')
-                df_match['Hora'] = pd.to_datetime(df_match['Hora']).dt.strftime('%H:%M:%S')
+            # Hacer merge con df_final
+            df_merge = df_final.merge(df_data[['Fecha', 'Hora', 'Col_D', 'Col_E']], on=['Fecha', 'Hora'], how='left')
 
-                # Hacer merge con el dataframe final
-                df_temp = df_final[['Fecha', 'Hora']].copy()
-                df_temp = df_temp.merge(df_match[['Fecha', 'Hora', 'D', 'E']], on=['Fecha', 'Hora'], how='left')
+            # Agregar las columnas con nombres correspondientes
+            df_final[f"{nombre_lp} (D3)"] = df_merge['Col_D']
+            df_final[f"{nombre_lp} (E3)"] = df_merge['Col_E']
 
-                # Crear nuevos nombres de columnas
-                df_final[f"{col_lp.split('.')[0]} 1 (D3)"] = df_temp['D']
-                df_final[f"{col_lp.split('.')[0]} 2 (D3)"] = df_temp['E']
+        else:
+            st.warning(f"No se encontró la hoja '{nombre_base}' en el Excel.")
 
-            else:
-                st.warning(f"No se encontró la hoja '{nombre_base}' en el Excel. Se omitirá '{col_lp}'.")
-
-        st.success("Cruce completado con éxito")
-        st.dataframe(df_final)
+    st.success("Proceso completado con datos del Excel agregados.")
+    st.dataframe(df_final)
