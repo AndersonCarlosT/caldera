@@ -3,9 +3,8 @@ import pandas as pd
 import io
 from datetime import datetime
 
-st.title("📊 Comparador de Perfiles de Carga - Múltiples archivos .LP (Orden Conservado)")
+st.title("📊 Comparador de Perfiles de Carga - Orden Real Perfil (00:00 al final)")
 
-# Cargar múltiples archivos .LP
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
 
 if archivos_lp:
@@ -73,9 +72,6 @@ if archivos_lp:
         # Filtrar por mes y año
         df_mes = df[(df['Fecha/Hora'].dt.month == numero_mes) & (df['Fecha/Hora'].dt.year == anio_seleccionado)].copy()
 
-        # Respetar el orden original (no ordenar nada)
-        df_mes = df_mes.sort_values('Fecha/Hora').reset_index(drop=True)
-
         # Separar fecha y hora
         df_mes['Fecha'] = df_mes['Fecha/Hora'].dt.strftime('%d/%m/%Y')
         df_mes['Hora'] = df_mes['Fecha/Hora'].dt.strftime('%H:%M:%S')
@@ -98,25 +94,34 @@ if archivos_lp:
 
         df_mes['Horario'] = df_mes.apply(clasificar, axis=1)
 
+        # Crear columna auxiliar para orden personalizado
+        def hora_orden(hora_str):
+            if hora_str == "00:00:00":
+                return 99999  # Máximo valor para que quede al final
+            else:
+                h, m, s = map(int, hora_str.split(":"))
+                return h * 60 + m  # Minutos desde las 00:00
+
+        df_mes['Orden_Hora'] = df_mes['Hora'].apply(hora_orden)
+
         # Definir nombre de columna para este archivo
         nombre_columna = f"+P/kW_{idx+1}"
 
         # Preparar dataframe para merge
-        df_merge = df_mes[['Fecha', 'Hora', 'Horario', '+P/kW']].copy()
+        df_merge = df_mes[['Fecha', 'Hora', 'Horario', 'Orden_Hora', '+P/kW']].copy()
         df_merge = df_merge.rename(columns={'+P/kW': nombre_columna})
 
         if df_final is None:
             df_final = df_merge
         else:
             # Unir respetando Fecha, Hora, Horario sin desordenar
-            df_final = pd.merge(df_final, df_merge, on=['Fecha', 'Hora', 'Horario'], how='outer')
+            df_final = pd.merge(df_final, df_merge, on=['Fecha', 'Hora', 'Horario', 'Orden_Hora'], how='outer')
 
-    # Ordenar respetando secuencia natural: primero por Fecha y dentro de cada día, las horas en el orden del archivo
-    df_final['Fecha_Hora_Orden'] = pd.to_datetime(df_final['Fecha'] + ' ' + df_final['Hora'], format='%d/%m/%Y %H:%M:%S')
-    df_final = df_final.sort_values(by=['Fecha_Hora_Orden']).reset_index(drop=True)
-    df_final = df_final.drop(columns=['Fecha_Hora_Orden'])
+    # Ordenar respetando secuencia natural de perfil: 00:15, ..., 23:45, 00:00
+    df_final = df_final.sort_values(by=['Fecha', 'Orden_Hora']).reset_index(drop=True)
+    df_final = df_final.drop(columns=['Orden_Hora'])
 
     # Mostrar resultado
-    st.success(f"Comparativo de {len(archivos_lp)} archivos del mes de {mes_seleccionado} {anio_seleccionado} (orden conservado)")
+    st.success(f"Comparativo de {len(archivos_lp)} archivos del mes de {mes_seleccionado} {anio_seleccionado} (orden real)")
     st.write(f"Días feriados ingresados: {dias_feriados}")
     st.dataframe(df_final)
