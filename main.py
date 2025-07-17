@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
 import io
+from datetime import datetime
 
-st.title("📊 Comparador de Perfiles de Carga - Varios Archivos LP")
+st.title("📊 Comparador de Perfiles de Carga - Múltiples archivos .LP")
 
-# Subir múltiples archivos
+# Cargar múltiples archivos .LP
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
 
 if archivos_lp:
@@ -23,7 +24,7 @@ if archivos_lp:
     with col2:
         anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
 
-    # Ingresar días feriados
+    # Input de feriados
     feriados_input = st.text_input(f"Ingrese los días feriados de {mes_seleccionado} separados por comas (ejemplo: 5,7,15):")
 
     if feriados_input.strip() != "":
@@ -35,7 +36,7 @@ if archivos_lp:
     else:
         dias_feriados = []
 
-    # Crear dataframe base con fecha y hora
+    # DataFrame base para unir los archivos
     df_final = None
 
     for idx, archivo in enumerate(archivos_lp):
@@ -50,7 +51,7 @@ if archivos_lp:
                 break
 
         if indice_inicio is None:
-            st.error(f"No se encontró la cabecera 'Fecha/Hora' en {archivo.name}.")
+            st.error(f"No se encontró la cabecera 'Fecha/Hora' en el archivo {archivo.name}.")
             continue
 
         # Leer tabla
@@ -62,14 +63,15 @@ if archivos_lp:
         df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
         df = df.dropna(axis=1, how='all')
 
-        # Eliminar "+Q/kvar"
-        df = df.drop(columns=[col for col in df.columns if "Q/kvar" in col], errors='ignore')
+        # Eliminar columna "+Q/kvar" si existe
+        columnas_validas = ["Fecha/Hora", "+P/kW"]
+        df = df[[col for col in df.columns if col in columnas_validas]]
 
         # Convertir a datetime
         df['Fecha/Hora'] = pd.to_datetime(df['Fecha/Hora'], format='%d/%m/%Y %H:%M:%S')
 
         # Filtrar por mes y año
-        df_mes = df[(df['Fecha/Hora'].dt.month == numero_mes) & (df['Fecha/Hora'].dt.year == anio_seleccionado)]
+        df_mes = df[(df['Fecha/Hora'].dt.month == numero_mes) & (df['Fecha/Hora'].dt.year == anio_seleccionado)].copy()
 
         # Separar fecha y hora
         df_mes['Fecha'] = df_mes['Fecha/Hora'].dt.strftime('%d/%m/%Y')
@@ -77,14 +79,17 @@ if archivos_lp:
         df_mes['Dia'] = df_mes['Fecha/Hora'].dt.day
         df_mes['Dia_semana'] = df_mes['Fecha/Hora'].dt.dayofweek  # Lunes=0, Domingo=6
 
-        # Clasificación HP / HFP
+        # Clasificación HP / HFP con feriados y domingos
         def clasificar(row):
             dia = row['Dia']
             dia_semana = row['Dia_semana']
             hora = pd.to_datetime(row['Hora'], format='%H:%M:%S').time()
 
+            # Si es feriado o domingo, todo el día es HFP
             if dia in dias_feriados or dia_semana == 6:
                 return "HFP"
+
+            # Clasificación normal por horario
             if hora >= pd.to_datetime("23:15:00", format='%H:%M:%S').time() or hora <= pd.to_datetime("18:00:00", format='%H:%M:%S').time():
                 return "HFP"
             else:
@@ -92,21 +97,23 @@ if archivos_lp:
 
         df_mes['Horario'] = df_mes.apply(clasificar, axis=1)
 
+        # Definir nombre de columna para este archivo
+        nombre_columna = f"+P/kW_{idx+1}"
+
         # Preparar dataframe para merge
-        columna_p = [col for col in df_mes.columns if "+P" in col][0]
-        df_merge = df_mes[['Fecha', 'Hora', 'Horario', columna_p]].copy()
-        df_merge = df_merge.rename(columns={columna_p: f"+P/kW archivo {idx+1}"})
+        df_merge = df_mes[['Fecha', 'Hora', 'Horario', '+P/kW']].copy()
+        df_merge = df_merge.rename(columns={'+P/kW': nombre_columna})
 
         if df_final is None:
             df_final = df_merge
         else:
-            # Unimos por Fecha, Hora y Horario
+            # Unir respetando Fecha, Hora, Horario
             df_final = pd.merge(df_final, df_merge, on=['Fecha', 'Hora', 'Horario'], how='outer')
 
-    if df_final is not None:
-        # Ordenar columnas
-        columnas_ordenadas = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if col.startswith("+P/kW")]
-        df_final = df_final[columnas_ordenadas]
+    # Ordenar por fecha y hora
+    df_final = df_final.sort_values(by=['Fecha', 'Hora']).reset_index(drop=True)
 
-        st.success("Datos combinados correctamente ✅")
-        st.dataframe(df_final)
+    # Mostrar resultado
+    st.success(f"Comparativo de {len(archivos_lp)} archivos del mes de {mes_seleccionado} {anio_seleccionado}")
+    st.write(f"Días feriados ingresados: {dias_feriados}")
+    st.dataframe(df_final)
