@@ -46,7 +46,7 @@ if archivo_lp is not None:
             numero_mes = meses[mes_seleccionado]
 
         with col2:
-            anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)  # Default 2025
+            anio_seleccionado = st.selectbox("Selecciona el año", list(range(2024, 2030)), index=1)  # Default 2025
 
         # Input de feriados
         feriados_input = st.text_input(f"Ingrese los días feriados de {mes_seleccionado} separados por comas (ejemplo: 5,7,15):")
