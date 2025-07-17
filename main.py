@@ -18,8 +18,8 @@ if archivos_lp and archivo_excel:
         "Nava 2.LP": 200,
         "Ravira 1.LP": 120,
         "Ravira 2.LP": 120,
-        "Canta 1.LP": 1,
-        "Canta 2.LP": 1
+        "Canta 1.LP": 400,
+        "Canta 2.LP": 400
     }
 
     # Selector de mes y año
