@@ -113,39 +113,56 @@ if archivos_lp and archivo_excel:
 
     # Cargar el Excel con múltiples hojas
     excel_data = pd.ExcelFile(archivo_excel)
-
+    
     for nombre_lp in nombres_lp:
         nombre_base = re.sub(r'\d+', '', nombre_lp)  # Quitar números
         nombre_base = nombre_base.replace('.LP', '').strip().upper()
-
+    
         if nombre_base in excel_data.sheet_names:
             df_hoja = pd.read_excel(archivo_excel, sheet_name=nombre_base, header=None)
-
+    
             # Convertir columna B a fecha
             df_hoja['FechaTmp'] = pd.to_datetime(df_hoja[1], errors='coerce')
-
+    
             # Convertir columna C a texto de hora
             df_hoja['HoraTmp'] = df_hoja[2].astype(str).str.strip()
-
+    
             # Filtrar solo filas válidas donde 'FechaTmp' no sea NaT y 'HoraTmp' tenga formato hora
             df_hoja = df_hoja[df_hoja['FechaTmp'].notna() & df_hoja['HoraTmp'].str.match(r'^\d{2}:\d{2}(:\d{2})?$')]
-
-            # Formatear las columnas para hacer match
+    
+            # Formatear columnas para hacer match
             df_hoja['Fecha'] = df_hoja['FechaTmp'].dt.strftime('%d/%m/%Y')
             df_hoja['Hora'] = df_hoja['HoraTmp']
-
+    
             # Eliminar temporales
             df_hoja = df_hoja.drop(columns=['FechaTmp', 'HoraTmp'])
-
-            # Crear nombres de columnas D y E
-            nombre_d = nombre_lp.replace('.LP', ' 1 (D3)')
-            nombre_e = nombre_lp.replace('.LP', ' 2 (D3)')
-
+    
+            # Crear nombres de columnas D y E usando nombre de hoja (no del archivo LP)
+            nombre_d = f"{nombre_base} 1 (D3)"
+            nombre_e = f"{nombre_base} 2 (D3)"
+    
             df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4]].copy()
             df_hoja_out = df_hoja_out.rename(columns={3: nombre_d, 4: nombre_e})
-
+    
             # Merge con df_final
             df_final = pd.merge(df_final, df_hoja_out, on=['Fecha', 'Hora'], how='left')
+    
+            # Reordenar columnas: poner los datos D3 justo después del archivo LP correspondiente
+            cols = df_final.columns.tolist()
+    
+            # Encontrar la posición del archivo LP actual
+            idx_lp = cols.index(nombre_lp)
+    
+            # Quitar columnas D3 de su posición actual
+            cols.remove(nombre_d)
+            cols.remove(nombre_e)
+    
+            # Insertarlas justo después de la columna del archivo LP
+            cols = cols[:idx_lp + 1] + [nombre_d, nombre_e] + cols[idx_lp + 1:]
+    
+            # Reordenar
+            df_final = df_final[cols]
+    
         else:
             st.warning(f"No se encontró la hoja '{nombre_base}' en el Excel.")
 
