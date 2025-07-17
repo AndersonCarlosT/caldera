@@ -3,7 +3,7 @@ import pandas as pd
 import io
 from datetime import datetime
 
-st.title("📊 Comparador de Perfiles de Carga - Múltiples archivos .LP")
+st.title("📊 Comparador de Perfiles de Carga - Múltiples archivos .LP (Orden Conservado)")
 
 # Cargar múltiples archivos .LP
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
@@ -73,6 +73,9 @@ if archivos_lp:
         # Filtrar por mes y año
         df_mes = df[(df['Fecha/Hora'].dt.month == numero_mes) & (df['Fecha/Hora'].dt.year == anio_seleccionado)].copy()
 
+        # Respetar el orden original (no ordenar nada)
+        df_mes = df_mes.sort_values('Fecha/Hora').reset_index(drop=True)
+
         # Separar fecha y hora
         df_mes['Fecha'] = df_mes['Fecha/Hora'].dt.strftime('%d/%m/%Y')
         df_mes['Hora'] = df_mes['Fecha/Hora'].dt.strftime('%H:%M:%S')
@@ -85,11 +88,9 @@ if archivos_lp:
             dia_semana = row['Dia_semana']
             hora = pd.to_datetime(row['Hora'], format='%H:%M:%S').time()
 
-            # Si es feriado o domingo, todo el día es HFP
             if dia in dias_feriados or dia_semana == 6:
                 return "HFP"
 
-            # Clasificación normal por horario
             if hora >= pd.to_datetime("23:15:00", format='%H:%M:%S').time() or hora <= pd.to_datetime("18:00:00", format='%H:%M:%S').time():
                 return "HFP"
             else:
@@ -107,13 +108,14 @@ if archivos_lp:
         if df_final is None:
             df_final = df_merge
         else:
-            # Unir respetando Fecha, Hora, Horario
+            # Unir respetando Fecha, Hora, Horario sin desordenar
             df_final = pd.merge(df_final, df_merge, on=['Fecha', 'Hora', 'Horario'], how='outer')
 
-    # Ordenar por fecha y hora
-    df_final = df_final.sort_values(by=['Fecha', 'Hora']).reset_index(drop=True)
+    # Ordenar respetando secuencia natural: primero por Fecha y dentro de cada día, las horas en el orden del archivo
+    df_final['Fecha_Hora_Orden'] = pd.to_datetime(df_final['Fecha'] + ' ' + df_final['Hora'], format='%d/%m/%Y %H:%M:%S')
+    df_final = df_final.sort_values(by=['Fecha_Hora_Orden']).reset_index(drop=True)
+    df_final = df_final.drop(columns=['Fecha_Hora_Orden'])
 
     # Mostrar resultado
-    st.success(f"Comparativo de {len(archivos_lp)} archivos del mes de {mes_seleccionado} {anio_seleccionado}")
-    st.write(f"Días feriados ingresados: {dias_feriados}")
-    st.dataframe(df_final)
+    st.success(f"Comparativo de {len(archivos_lp)} archivos del mes de {mes_seleccionado} {anio_seleccionado} (orden conservado)")
+    st.write(f"D
