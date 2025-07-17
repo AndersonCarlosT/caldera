@@ -2,12 +2,14 @@ import streamlit as st
 import pandas as pd
 import io
 from datetime import datetime
+import re
 
-st.title("📊 Comparador de Perfiles de Carga - Múltiples archivos .LP (Orden y Nombres Reales)")
+st.title("📊 Comparador de Perfiles de Carga + Datos de Excel (Multihojas)")
 
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
+archivo_excel = st.file_uploader("Sube el archivo Excel con varias hojas", type=["xlsx"])
 
-if archivos_lp:
+if archivos_lp and archivo_excel:
     # Selector de mes y año
     meses = {
         "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
@@ -34,6 +36,9 @@ if archivos_lp:
             dias_feriados = []
     else:
         dias_feriados = []
+
+    # Cargar Excel multihojas
+    xls = pd.ExcelFile(archivo_excel)
 
     # DataFrame base para unir los archivos
     df_final = None
@@ -78,7 +83,7 @@ if archivos_lp:
         df_mes['Dia'] = df_mes['Fecha/Hora'].dt.day
         df_mes['Dia_semana'] = df_mes['Fecha/Hora'].dt.dayofweek
 
-        # Clasificación HP / HFP con feriados y domingos
+        # Clasificación HP / HFP
         def clasificar(row):
             dia = row['Dia']
             dia_semana = row['Dia_semana']
@@ -104,23 +109,50 @@ if archivos_lp:
 
         df_mes['Orden_Hora'] = df_mes['Hora'].apply(hora_orden)
 
-        # Definir nombre de columna como el nombre real del archivo
-        nombre_columna = archivo.name
-
-        # Preparar dataframe para merge
+        # Definir nombre de columna como el nombre real del archivo LP
+        nombre_columna_lp = archivo.name
         df_merge = df_mes[['Fecha', 'Hora', 'Horario', 'Orden_Hora', '+P/kW']].copy()
-        df_merge = df_merge.rename(columns={'+P/kW': nombre_columna})
+        df_merge = df_merge.rename(columns={'+P/kW': nombre_columna_lp})
 
+        # Buscar hoja correspondiente en el Excel
+        base_nombre = re.sub(r'\s*\d+', '', archivo.name.split('.')[0]).strip().upper()
+        if base_nombre in xls.sheet_names:
+            hoja_df = pd.read_excel(archivo_excel, sheet_name=base_nombre)
+
+            # Filtrar solo filas válidas (las que tienen fecha y hora en columnas B y C)
+            hoja_df = hoja_df.dropna(subset=[hoja_df.columns[1], hoja_df.columns[2]])
+
+            hoja_df['Fecha'] = pd.to_datetime(hoja_df.iloc[:, 1]).dt.strftime('%d/%m/%Y')
+            hoja_df['Hora'] = pd.to_datetime(hoja_df.iloc[:, 2]).dt.strftime('%H:%M:%S')
+
+            # Extraer columnas D y E
+            datos_D = hoja_df.iloc[:, 3]
+            datos_E = hoja_df.iloc[:, 4]
+
+            # Crear DataFrame de la hoja para merge
+            df_excel = pd.DataFrame({
+                'Fecha': hoja_df['Fecha'],
+                'Hora': hoja_df['Hora'],
+                f"{archivo.name.split('.')[0]} 1 (D3)": datos_D,
+                f"{archivo.name.split('.')[0]} 2 (D3)": datos_E
+            })
+
+            # Unir al dataframe del LP
+            df_merge = pd.merge(df_merge, df_excel, on=['Fecha', 'Hora'], how='left')
+        else:
+            st.warning(f"No se encontró la hoja '{base_nombre}' en el Excel para el archivo {archivo.name}")
+
+        # Merge acumulativo
         if df_final is None:
             df_final = df_merge
         else:
             df_final = pd.merge(df_final, df_merge, on=['Fecha', 'Hora', 'Horario', 'Orden_Hora'], how='outer')
 
-    # Ordenar correctamente
+    # Orden final
     df_final = df_final.sort_values(by=['Fecha', 'Orden_Hora']).reset_index(drop=True)
     df_final = df_final.drop(columns=['Orden_Hora'])
 
     # Mostrar resultado
-    st.success(f"Comparativo de {len(archivos_lp)} archivos del mes de {mes_seleccionado} {anio_seleccionado} (nombres reales de archivo)")
+    st.success(f"Comparativo de {len(archivos_lp)} archivos .LP con datos de Excel (hojas vinculadas)")
     st.write(f"Días feriados ingresados: {dias_feriados}")
     st.dataframe(df_final)
