@@ -4,7 +4,7 @@ import io
 from functools import reduce
 import re
 
-st.title("📊 Comparador de archivos .LP con Excel multi-hoja - Etapa 2")
+st.title("📊 Comparador de archivos .LP con Excel multi-hoja - Etapa 2 (corregido)")
 
 # Múltiple subida de archivos LP
 archivos_lp = st.file_uploader("Sube uno o varios archivos .LP", type=["lp"], accept_multiple_files=True)
@@ -114,24 +114,24 @@ if archivos_lp and archivo_excel:
         if nombre_base in excel.sheet_names:
             df_excel = pd.read_excel(archivo_excel, sheet_name=nombre_base, header=None)
 
-            # Buscar la fila donde empiecen las fechas (por si hay encabezados de texto)
+            # Buscar la fila donde empiezan las fechas en columna B
             fila_inicio = None
             for i, fila in df_excel.iterrows():
-                if isinstance(fila[1], pd.Timestamp) or isinstance(fila[1], str):
-                    try:
-                        pd.to_datetime(str(fila[1]), format='%d/%m/%Y')
-                        fila_inicio = i
-                        break
-                    except:
-                        continue
+                valor = str(fila[1]).strip()
+                fecha = pd.to_datetime(valor, dayfirst=True, errors='coerce')
+                if pd.notnull(fecha):
+                    fila_inicio = i
+                    break
 
             if fila_inicio is None:
-                st.warning(f"No se encontró data en la hoja {nombre_base}")
+                st.warning(f"No se encontró data válida en la hoja {nombre_base}. Revisa si la columna B tiene fechas.")
                 continue
 
             df_data = df_excel.iloc[fila_inicio:].copy()
             df_data.columns = ['Index', 'Fecha', 'Hora', 'Col_D', 'Col_E']
-            df_data['Fecha'] = pd.to_datetime(df_data['Fecha']).dt.strftime('%d/%m/%Y')
+
+            # Normalizar fechas y horas
+            df_data['Fecha'] = pd.to_datetime(df_data['Fecha'], dayfirst=True, errors='coerce').dt.strftime('%d/%m/%Y')
             df_data['Hora'] = df_data['Hora'].astype(str).str.strip()
 
             # Hacer merge con df_final
