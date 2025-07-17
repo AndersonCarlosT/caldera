@@ -4,10 +4,11 @@ import io
 from datetime import datetime
 import re
 
-st.title("📊 Comparador de Perfiles de Carga + Datos de Excel (Multihojas)")
+st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (D3)")
 
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
-archivo_excel = st.file_uploader("Sube el archivo Excel con varias hojas", type=["xlsx"])
+
+archivo_excel = st.file_uploader("Sube el archivo Excel con múltiples hojas", type=["xlsx"])
 
 if archivos_lp and archivo_excel:
     # Selector de mes y año
@@ -25,7 +26,6 @@ if archivos_lp and archivo_excel:
     with col2:
         anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
 
-    # Input de feriados
     feriados_input = st.text_input(f"Ingrese los días feriados de {mes_seleccionado} separados por comas (ejemplo: 5,7,15):")
 
     if feriados_input.strip() != "":
@@ -37,17 +37,13 @@ if archivos_lp and archivo_excel:
     else:
         dias_feriados = []
 
-    # Cargar Excel multihojas
-    xls = pd.ExcelFile(archivo_excel)
-
-    # DataFrame base para unir los archivos
     df_final = None
+    nombres_lp = []
 
     for archivo in archivos_lp:
         contenido = archivo.read().decode('utf-8')
         lineas = contenido.splitlines()
 
-        # Buscar inicio de la tabla
         indice_inicio = None
         for i, linea in enumerate(lineas):
             if linea.strip().startswith("Fecha/Hora"):
@@ -58,32 +54,25 @@ if archivos_lp and archivo_excel:
             st.error(f"No se encontró la cabecera 'Fecha/Hora' en el archivo {archivo.name}.")
             continue
 
-        # Leer tabla
         tabla = "\n".join(lineas[indice_inicio:])
         df = pd.read_csv(io.StringIO(tabla), sep=";", engine='python')
 
-        # Limpiar columnas y espacios
         df.columns = [col.strip() for col in df.columns]
         df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
         df = df.dropna(axis=1, how='all')
 
-        # Eliminar columna "+Q/kvar" si existe
         columnas_validas = ["Fecha/Hora", "+P/kW"]
         df = df[[col for col in df.columns if col in columnas_validas]]
 
-        # Convertir a datetime
         df['Fecha/Hora'] = pd.to_datetime(df['Fecha/Hora'], format='%d/%m/%Y %H:%M:%S')
 
-        # Filtrar por mes y año
         df_mes = df[(df['Fecha/Hora'].dt.month == numero_mes) & (df['Fecha/Hora'].dt.year == anio_seleccionado)].copy()
 
-        # Separar fecha y hora
         df_mes['Fecha'] = df_mes['Fecha/Hora'].dt.strftime('%d/%m/%Y')
         df_mes['Hora'] = df_mes['Fecha/Hora'].dt.strftime('%H:%M:%S')
         df_mes['Dia'] = df_mes['Fecha/Hora'].dt.day
         df_mes['Dia_semana'] = df_mes['Fecha/Hora'].dt.dayofweek
 
-        # Clasificación HP / HFP
         def clasificar(row):
             dia = row['Dia']
             dia_semana = row['Dia_semana']
@@ -99,65 +88,59 @@ if archivos_lp and archivo_excel:
 
         df_mes['Horario'] = df_mes.apply(clasificar, axis=1)
 
-        # Columna auxiliar para ordenar las horas correctamente
         def hora_orden(hora_str):
             if hora_str == "00:00:00":
-                return 99999  # Forzar al final
+                return 99999
             else:
                 h, m, s = map(int, hora_str.split(":"))
                 return h * 60 + m
 
         df_mes['Orden_Hora'] = df_mes['Hora'].apply(hora_orden)
 
-        # Definir nombre de columna como el nombre real del archivo LP
-        nombre_columna_lp = archivo.name
+        nombre_columna = archivo.name
+        nombres_lp.append(nombre_columna)
+
         df_merge = df_mes[['Fecha', 'Hora', 'Horario', 'Orden_Hora', '+P/kW']].copy()
-        df_merge = df_merge.rename(columns={'+P/kW': nombre_columna_lp})
+        df_merge = df_merge.rename(columns={'+P/kW': nombre_columna})
 
-        # Buscar hoja correspondiente en el Excel
-        base_nombre = re.sub(r'\s*\d+', '', archivo.name.split('.')[0]).strip().upper()
-        if base_nombre in xls.sheet_names:
-            hoja_df = pd.read_excel(archivo_excel, sheet_name=base_nombre)
-
-            # Manejo seguro de fechas y horas en columnas B y C
-            fechas_col = pd.to_datetime(hoja_df.iloc[:, 1], errors='coerce')
-            horas_col = pd.to_datetime(hoja_df.iloc[:, 2], errors='coerce')
-
-            # Filtrar solo filas válidas (las que tienen fecha y hora real)
-            hoja_df = hoja_df[~fechas_col.isna() & ~horas_col.isna()].copy()
-
-            # Formatear fecha y hora
-            hoja_df['Fecha'] = fechas_col.dt.strftime('%d/%m/%Y')
-            hoja_df['Hora'] = horas_col.dt.strftime('%H:%M:%S')
-
-            # Extraer columnas D y E
-            datos_D = hoja_df.iloc[:, 3]
-            datos_E = hoja_df.iloc[:, 4]
-
-            # Crear DataFrame de la hoja para merge
-            df_excel = pd.DataFrame({
-                'Fecha': hoja_df['Fecha'],
-                'Hora': hoja_df['Hora'],
-                f"{archivo.name.split('.')[0]} 1 (D3)": datos_D,
-                f"{archivo.name.split('.')[0]} 2 (D3)": datos_E
-            })
-
-            # Unir al dataframe del LP
-            df_merge = pd.merge(df_merge, df_excel, on=['Fecha', 'Hora'], how='left')
-        else:
-            st.warning(f"No se encontró la hoja '{base_nombre}' en el Excel para el archivo {archivo.name}")
-
-        # Merge acumulativo
         if df_final is None:
             df_final = df_merge
         else:
             df_final = pd.merge(df_final, df_merge, on=['Fecha', 'Hora', 'Horario', 'Orden_Hora'], how='outer')
 
-    # Orden final
     df_final = df_final.sort_values(by=['Fecha', 'Orden_Hora']).reset_index(drop=True)
     df_final = df_final.drop(columns=['Orden_Hora'])
 
-    # Mostrar resultado
-    st.success(f"Comparativo de {len(archivos_lp)} archivos .LP con datos de Excel (hojas vinculadas)")
-    st.write(f"Días feriados ingresados: {dias_feriados}")
+    # Cargar el Excel con múltiples hojas
+    excel_data = pd.ExcelFile(archivo_excel)
+
+    for nombre_lp in nombres_lp:
+        # Obtener nombre de hoja (quitando número y extensión, pasando a mayúsculas)
+        nombre_base = re.sub(r'\d+', '', nombre_lp)  # Quita números
+        nombre_base = nombre_base.replace('.LP', '').strip().upper()
+
+        if nombre_base in excel_data.sheet_names:
+            df_hoja = pd.read_excel(archivo_excel, sheet_name=nombre_base, header=None)
+
+            # Filtrar solo las filas donde las columnas B y C no estén vacías
+            df_hoja = df_hoja[df_hoja[1].notna() & df_hoja[2].notna()]
+
+            # Formatear las fechas de columna B a 'dd/mm/yyyy'
+            df_hoja['Fecha'] = pd.to_datetime(df_hoja[1]).dt.strftime('%d/%m/%Y')
+            df_hoja['Hora'] = pd.to_datetime(df_hoja[2]).dt.strftime('%H:%M:%S')
+
+            # Extraer columnas D y E con nombres personalizados
+            nombre_d = nombre_lp.replace('.LP', ' 1 (D3)')
+            nombre_e = nombre_lp.replace('.LP', ' 2 (D3)')
+
+            df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4]].copy()
+            df_hoja_out = df_hoja_out.rename(columns={3: nombre_d, 4: nombre_e})
+
+            # Hacer merge al dataframe final
+            df_final = pd.merge(df_final, df_hoja_out, on=['Fecha', 'Hora'], how='left')
+
+        else:
+            st.warning(f"No se encontró la hoja '{nombre_base}' en el Excel.")
+
+    st.success("Proceso completado. Se añadieron columnas D y E al dataframe.")
     st.dataframe(df_final)
