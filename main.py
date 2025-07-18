@@ -192,7 +192,7 @@ if archivos_lp and archivo_excel:
         factor = factores.get(nombre_lp, 1)
         nueva_col = f"{nombre_lp} * Factor"
         df_lp[nueva_col] = df_lp[nombre_lp].astype(float) * factor
-
+    
     # Sumar las multiplicaciones por nombre base (sin número)
     sumas_por_base = {}
     
@@ -228,36 +228,23 @@ if archivos_lp and archivo_excel:
     st.subheader("Datos adicionales D3")
     st.dataframe(df_d3)
     
-    # ===========================
-    #  TERCERA ETAPA: G1
-    # ===========================
+    # ============================
+    #   TERCERA ETAPA: G1 INDEPENDIENTE
+    # ============================
     
     if archivo_g1 is not None:
+        st.subheader("Datos G1 (Central de Generación)")
     
         # Leer la primera hoja del archivo G1
         df_g1_raw = pd.read_excel(archivo_g1, sheet_name=0, header=None)
     
         # Extraer los rangos solicitados
-    
-        # C15:C26 => "Nombre de la Central"
         nombre_central = df_g1_raw.loc[14:25, 2].reset_index(drop=True)
-    
-        # E15:E26 => "Tipo de Generador"
         tipo_generador = df_g1_raw.loc[14:25, 4].reset_index(drop=True)
-    
-        # F15:F26 => "Numero de Generador"
         numero_generador = df_g1_raw.loc[14:25, 5].reset_index(drop=True)
-    
-        # J15:J26 => "HP (MWh)"
         hp_mwh = df_g1_raw.loc[14:25, 9].reset_index(drop=True)
-    
-        # K15:K26 => "HFP (MWh)"
         hfp_mwh = df_g1_raw.loc[14:25, 10].reset_index(drop=True)
-    
-        # L15:L26 => "Total (MWh)"
         total_mwh = df_g1_raw.loc[14:25, 11].reset_index(drop=True)
-    
-        # O15:O26 => "Máxima Demanda (MW)"
         max_demanda = df_g1_raw.loc[14:25, 14].reset_index(drop=True)
     
         # Crear dataframe g1
@@ -271,5 +258,4 @@ if archivos_lp and archivo_excel:
             "Máxima Demanda (MW)": max_demanda
         })
     
-        st.subheader("Datos G1 (Central de Generación)")
         st.dataframe(df_g1)
