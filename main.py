@@ -191,9 +191,38 @@ if archivos_lp and archivo_excel:
         factor = factores.get(nombre_lp, 1)
         nueva_col = f"{nombre_lp} * Factor"
         df_lp[nueva_col] = df_lp[nombre_lp].astype(float) * factor
-
+    
+    # Sumar las multiplicaciones por nombre base (sin número)
+    sumas_por_base = {}
+    
+    for nombre_lp in nombres_lp:
+        nombre_base = re.sub(r'\d+', '', nombre_lp).replace('.LP', '').strip()
+    
+        columna_factor = f"{nombre_lp} * Factor"
+    
+        if nombre_base not in sumas_por_base:
+            sumas_por_base[nombre_base] = df_lp[columna_factor].copy()
+        else:
+            sumas_por_base[nombre_base] += df_lp[columna_factor]
+    
+    # Agregar columnas de suma al df_lp
+    for nombre_base, suma in sumas_por_base.items():
+        df_lp[f"{nombre_base} (Total)"] = suma
+    
+    # Mostrar df_lp
     st.subheader("Datos de archivos LP con multiplicación por factores")
     st.dataframe(df_lp)
-
+    
+    # Agregar suma de columnas D y E al df_d3
+    for nombre_base in sumas_por_base.keys():  # Reutilizamos los nombres base
+    
+        nombre_d = f"{nombre_base.upper()} 1 (D3)"
+        nombre_e = f"{nombre_base.upper()} 2 (D3)"
+        nombre_suma = f"{nombre_base.upper()} (D3 Total)"
+    
+        if nombre_d in df_d3.columns and nombre_e in df_d3.columns:
+            df_d3[nombre_suma] = df_d3[[nombre_d, nombre_e]].astype(float).sum(axis=1)
+    
+    # Mostrar df_d3
     st.subheader("Datos adicionales D3")
     st.dataframe(df_d3)
