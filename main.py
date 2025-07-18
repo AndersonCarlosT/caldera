@@ -285,5 +285,4 @@ with col2:
         df_g1 = df_g1.fillna(0)
 
         # Mostrar resultado G1
-        st.success("Datos de G1 procesados correctamente")
         st.dataframe(df_g1, use_container_width=True)
