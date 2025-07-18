@@ -231,7 +231,6 @@ with col1:
         st.dataframe(df_d3)
 
 with col2:
-    st.header("📥 Datos de G1 - Centrales")
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
 
