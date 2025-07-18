@@ -124,69 +124,70 @@ if archivos_lp and archivo_excel:
     df_final = df_final.drop(columns=['Orden_Hora'])
 
     # Cargar el Excel con múltiples hojas
+    # Cargar el Excel con múltiples hojas D3
     excel_data = pd.ExcelFile(archivo_excel)
     hojas_procesadas = set()
-
+    
     for nombre_lp in nombres_lp:
         nombre_base = re.sub(r'\d+', '', nombre_lp)
         nombre_base = nombre_base.replace('.LP', '').strip().upper()
-
+    
         if nombre_base in excel_data.sheet_names:
             if nombre_base not in hojas_procesadas:
                 hojas_procesadas.add(nombre_base)
-
+    
                 df_hoja = pd.read_excel(archivo_excel, sheet_name=nombre_base, header=None)
-
+    
                 df_hoja['FechaTmp'] = pd.to_datetime(df_hoja[1], errors='coerce')
                 df_hoja['HoraTmp'] = df_hoja[2].astype(str).str.strip()
-
+    
                 df_hoja = df_hoja[df_hoja['FechaTmp'].notna() & df_hoja['HoraTmp'].str.match(r'^\d{2}:\d{2}(:\d{2})?$')]
-
+    
                 df_hoja['Fecha'] = df_hoja['FechaTmp'].dt.strftime('%d/%m/%Y')
                 df_hoja['Hora'] = df_hoja['HoraTmp']
-
+    
                 df_hoja = df_hoja.drop(columns=['FechaTmp', 'HoraTmp'])
-
+    
                 nombre_d = f"{nombre_base} 1 (D3)"
                 nombre_e = f"{nombre_base} 2 (D3)"
                 nombre_f = f"{nombre_base} 3 (D3)"
-
+    
                 df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4, 5]].copy()
                 df_hoja_out = df_hoja_out.rename(columns={3: nombre_d, 4: nombre_e, 5: nombre_f})
-
+    
                 df_final = pd.merge(df_final, df_hoja_out, on=['Fecha', 'Hora'], how='left')
         else:
             st.warning(f"No se encontró la hoja '{nombre_base}' en el Excel.")
-
+    
     # Reordenar columnas para poner D3 al lado del archivo LP correspondiente
     cols = df_final.columns.tolist()
-
+    
     for nombre_lp in nombres_lp:
         nombre_base = re.sub(r'\d+', '', nombre_lp)
         nombre_base = nombre_base.replace('.LP', '').strip().upper()
-
+    
         nombre_d = f"{nombre_base} 1 (D3)"
         nombre_e = f"{nombre_base} 2 (D3)"
         nombre_f = f"{nombre_base} 3 (D3)"
-
+    
         if nombre_d in cols and nombre_e in cols and nombre_f in cols:
             idx_lp = cols.index(nombre_lp)
-
+    
             cols.remove(nombre_d)
             cols.remove(nombre_e)
             cols.remove(nombre_f)
-
+    
             cols = cols[:idx_lp + 1] + [nombre_d, nombre_e, nombre_f] + cols[idx_lp + 1:]
-
+    
     df_final = df_final[cols]
-
+    
     # Crear df_lp y df_d3
     columnas_lp = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if col in nombres_lp]
     df_lp = df_final[columnas_lp].copy()
-
+    
     columnas_d3 = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if "(D3)" in col]
     df_d3 = df_final[columnas_d3].copy()
-
+    
     # Multiplicación por factores
     for nombre_lp in nombres_lp:
         factor = factores.get(nombre_lp, 1)
