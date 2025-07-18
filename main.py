@@ -8,6 +8,7 @@ st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (
 
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
 archivo_excel = st.file_uploader("Sube el archivo Excel con múltiples hojas", type=["xlsx"])
+archivo_g1 = st.file_uploader("⚡ Sube el archivo Excel G1 (Generación)", type=["xlsx"])
 
 if archivos_lp and archivo_excel:
     # Factores fijos (no mostrados)
@@ -230,8 +231,6 @@ if archivos_lp and archivo_excel:
     # ===========================
     #  TERCERA ETAPA: G1
     # ===========================
-    
-    archivo_g1 = st.file_uploader("📄 Agrega el archivo Excel G1", type=["xlsx"])
     
     if archivo_g1 is not None:
     
