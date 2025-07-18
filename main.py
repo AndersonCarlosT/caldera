@@ -237,13 +237,22 @@ if archivo_g1 is not None:
 
     df_g1_raw = pd.read_excel(archivo_g1, sheet_name=0, header=None)
 
-    nombre_central = df_g1_raw.loc[14:25, 2].reset_index(drop=True)
-    tipo_generador = df_g1_raw.loc[14:25, 4].reset_index(drop=True)
-    numero_generador = df_g1_raw.loc[14:25, 5].reset_index(drop=True)
-    hp_mwh = df_g1_raw.loc[14:25, 9].reset_index(drop=True)
-    hfp_mwh = df_g1_raw.loc[14:25, 10].reset_index(drop=True)
-    total_mwh = df_g1_raw.loc[14:25, 11].reset_index(drop=True)
-    max_demanda = df_g1_raw.loc[14:25, 14].reset_index(drop=True)
+    num_columnas = df_g1_raw.shape[1]
+
+    # Definimos extracción segura
+    def extraer_columna(df, fila_ini, fila_fin, col):
+        if col < num_columnas:
+            return df.loc[fila_ini:fila_fin, col].reset_index(drop=True)
+        else:
+            return pd.Series([None]*(fila_fin - fila_ini + 1))
+
+    nombre_central = extraer_columna(df_g1_raw, 14, 25, 2)
+    tipo_generador = extraer_columna(df_g1_raw, 14, 25, 4)
+    numero_generador = extraer_columna(df_g1_raw, 14, 25, 5)
+    hp_mwh = extraer_columna(df_g1_raw, 14, 25, 9)
+    hfp_mwh = extraer_columna(df_g1_raw, 14, 25, 10)
+    total_mwh = extraer_columna(df_g1_raw, 14, 25, 11)
+    max_demanda = extraer_columna(df_g1_raw, 14, 25, 14)
 
     df_g1 = pd.DataFrame({
         "Nombre de la Central": nombre_central,
