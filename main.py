@@ -189,7 +189,7 @@ with col1:
         # Multiplicación por factores
         for nombre_lp in nombres_lp:
             factor = factores.get(nombre_lp, 1)
-            nueva_col = f"{nombre_lp} * Factor"
+            nueva_col = f"{nombre_lp} * {factor}"
             df_lp[nueva_col] = df_lp[nombre_lp].astype(float) * factor
         
         # Sumar las multiplicaciones por nombre base (sin número)
@@ -198,7 +198,7 @@ with col1:
         for nombre_lp in nombres_lp:
             nombre_base = re.sub(r'\d+', '', nombre_lp).replace('.LP', '').strip()
         
-            columna_factor = f"{nombre_lp} * {factor}"
+            columna_factor = f"{nombre_lp} * Factor"
         
             if nombre_base not in sumas_por_base:
                 sumas_por_base[nombre_base] = df_lp[columna_factor].copy()
