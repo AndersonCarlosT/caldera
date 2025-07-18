@@ -156,28 +156,6 @@ with col1:
                     df_final = pd.merge(df_final, df_hoja_out, on=['Fecha', 'Hora'], how='left')
             else:
                 st.warning(f"No se encontró la hoja '{nombre_base}' en el Excel.")
-    
-        # Reordenar columnas para poner D3 al lado del archivo LP correspondiente
-        cols = df_final.columns.tolist()
-    
-        for nombre_lp in nombres_lp:
-            nombre_base = re.sub(r'\d+', '', nombre_lp)
-            nombre_base = nombre_base.replace('.LP', '').strip().upper()
-    
-            nombre_d = f"{nombre_base} 1 (D3)"
-            nombre_e = f"{nombre_base} 2 (D3)"
-            nombre_f = f"{nombre_base} 3 (D3)"
-    
-            if nombre_d in cols and nombre_e in cols and nombre_f in cols:
-                idx_lp = cols.index(nombre_lp)
-    
-                cols.remove(nombre_d)
-                cols.remove(nombre_e)
-                cols.remove(nombre_f)
-    
-                cols = cols[:idx_lp + 1] + [nombre_d, nombre_e, nombre_f] + cols[idx_lp + 1:]
-    
-        df_final = df_final[cols]
 
         # Crear df_lp y df_d3
         columnas_lp = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if col in nombres_lp]
