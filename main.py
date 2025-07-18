@@ -32,13 +32,10 @@ with col1:
             "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
         }
     
-        col1, col2 = st.columns(2)
-        with col1:
-            mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
-            numero_mes = meses[mes_seleccionado]
-    
-        with col2:
-            anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
+
+        mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
+        numero_mes = meses[mes_seleccionado]
+        anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
     
         feriados_input = st.text_input(f"Ingrese los días feriados de {mes_seleccionado} separados por comas (ejemplo: 5,7,15):")
     
