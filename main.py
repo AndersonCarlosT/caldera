@@ -6,6 +6,7 @@ import re
 
 st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (D3) + Factores de Multiplicación")
 
+with col1:
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
 archivo_excel = st.file_uploader("Sube el archivo Excel con múltiples hojas", type=["xlsx"])
 
