@@ -4,6 +4,7 @@ import io
 from datetime import datetime
 import re
 
+st.set_page_config(page_title="Comparador de Perfiles", layout="wide")
 st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (D3) + Factores de Multiplicación")
 
 col1, col2 = st.columns(2)
