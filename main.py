@@ -227,3 +227,64 @@ if archivos_lp and archivo_excel:
     st.subheader("Datos adicionales D3")
     st.dataframe(df_d3)
 
+    with col2:
+        st.header("📥 Datos de G1 - Centrales")
+    
+        archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
+    
+        if archivo_g1:
+            # Leer la hoja "G-01 CENTRALES"
+            df_excel_g1 = pd.read_excel(archivo_g1, sheet_name="G-01 CENTRALES", header=None)
+    
+            # Datos principales: C15:C26, E15:F26, J15:L26, O15:O26
+            nombre_central = df_excel_g1.loc[14:25, 2]
+            tipo_generador = df_excel_g1.loc[14:25, 4]
+            numero_generador = df_excel_g1.loc[14:25, 5]
+            hp_mwh = df_excel_g1.loc[14:25, 9]
+            hfp_mwh = df_excel_g1.loc[14:25, 10]
+            total_mwh = df_excel_g1.loc[14:25, 11]
+            maxima_demanda = df_excel_g1.loc[14:25, 14]
+    
+            df_g1_base = pd.DataFrame({
+                "Nombre de la Central": nombre_central,
+                "Tipo de Generador": tipo_generador,
+                "Numero de Generador": numero_generador,
+                "HP (MWh)": hp_mwh,
+                "HFP (MWh)": hfp_mwh,
+                "Total (MWh)": total_mwh,
+                "Máxima Demanda (MW)": maxima_demanda
+            })
+    
+            # Datos adicionales fijos
+    
+            nuevas_centrales = ["Central Termica"] * 4
+            nuevos_generadores = ["MODASA MP-515", "CUMMINS ZQ-4288", "COMMINS C900", "COMMINS 925kw"]
+            nuevos_codigos = ["G0016", "G01044", "G0653", "G0047"]
+    
+            nuevas_hp = [df_excel_g1.loc[48, 9], df_excel_g1.loc[53, 9], df_excel_g1.loc[58, 9], df_excel_g1.loc[63, 9]]
+            nuevas_hfp = [df_excel_g1.loc[48, 10], df_excel_g1.loc[53, 10], df_excel_g1.loc[58, 10], df_excel_g1.loc[63, 10]]
+            nuevas_total = [df_excel_g1.loc[48, 11], df_excel_g1.loc[53, 11], df_excel_g1.loc[58, 11], df_excel_g1.loc[63, 11]]
+            nuevas_maxima = [df_excel_g1.loc[48, 14], df_excel_g1.loc[53, 14], df_excel_g1.loc[58, 14], df_excel_g1.loc[63, 14]]
+    
+            df_g1_adicional = pd.DataFrame({
+                "Nombre de la Central": nuevas_centrales,
+                "Tipo de Generador": nuevos_generadores,
+                "Numero de Generador": nuevos_codigos,
+                "HP (MWh)": nuevas_hp,
+                "HFP (MWh)": nuevas_hfp,
+                "Total (MWh)": nuevas_total,
+                "Máxima Demanda (MW)": nuevas_maxima
+            })
+    
+            # Concatenar y limpiar
+            df_g1 = pd.concat([df_g1_base, df_g1_adicional], ignore_index=True)
+    
+            # Eliminar filas 3, 6, 9 y 12
+            filas_a_eliminar = [2, 5, 8, 11]
+            df_g1 = df_g1.drop(filas_a_eliminar).reset_index(drop=True)
+    
+            df_g1 = df_g1.fillna(0)
+    
+            # Mostrar resultado G1
+            st.success("Datos de G1 procesados correctamente")
+            st.dataframe(df_g1, use_container_width=True)
