@@ -4,18 +4,14 @@ import io
 from datetime import datetime
 import re
 
-st.title("📊 Comparador de Perfiles de Carga + D3 + Generación G1")
+st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (D3) + Factores de Multiplicación")
 
-# Uploaders
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
-archivo_excel = st.file_uploader("Sube el archivo Excel con múltiples hojas (D3)", type=["xlsx"])
+archivo_excel = st.file_uploader("Sube el archivo Excel con múltiples hojas", type=["xlsx"])
 archivo_g1 = st.file_uploader("⚡ Sube el archivo Excel G1 (Generación)", type=["xlsx"])
 
-# ============================
-# PRIMERA Y SEGUNDA ETAPA: LP + D3
-# ============================
-
 if archivos_lp and archivo_excel:
+    # Factores fijos (no mostrados)
     factores = {
         "Acos 1.LP": 100,
         "Acos 2.LP": 100,
@@ -27,6 +23,7 @@ if archivos_lp and archivo_excel:
         "Canta 2.LP": 400
     }
 
+    # Selector de mes y año
     meses = {
         "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
         "Mayo": 5, "Junio": 6, "Julio": 7, "Agosto": 8,
@@ -95,6 +92,7 @@ if archivos_lp and archivo_excel:
 
             if dia in dias_feriados or dia_semana == 6:
                 return "HFP"
+
             if hora >= pd.to_datetime("23:15:00", format='%H:%M:%S').time() or hora <= pd.to_datetime("18:00:00", format='%H:%M:%S').time():
                 return "HFP"
             else:
@@ -125,10 +123,7 @@ if archivos_lp and archivo_excel:
     df_final = df_final.sort_values(by=['Fecha', 'Orden_Hora']).reset_index(drop=True)
     df_final = df_final.drop(columns=['Orden_Hora'])
 
-    # ============================
-    #   SEGUNDA ETAPA: D3
-    # ============================
-
+    # Cargar el Excel con múltiples hojas
     excel_data = pd.ExcelFile(archivo_excel)
     hojas_procesadas = set()
 
@@ -197,71 +192,69 @@ if archivos_lp and archivo_excel:
         factor = factores.get(nombre_lp, 1)
         nueva_col = f"{nombre_lp} * Factor"
         df_lp[nueva_col] = df_lp[nombre_lp].astype(float) * factor
-
+    
     # Sumar las multiplicaciones por nombre base (sin número)
     sumas_por_base = {}
+    
     for nombre_lp in nombres_lp:
         nombre_base = re.sub(r'\d+', '', nombre_lp).replace('.LP', '').strip()
+    
         columna_factor = f"{nombre_lp} * Factor"
-
+    
         if nombre_base not in sumas_por_base:
             sumas_por_base[nombre_base] = df_lp[columna_factor].copy()
         else:
             sumas_por_base[nombre_base] += df_lp[columna_factor]
-
+    
     # Agregar columnas de suma al df_lp
     for nombre_base, suma in sumas_por_base.items():
         df_lp[f"{nombre_base} (Total)"] = suma
-
+    
+    # Mostrar df_lp
     st.subheader("Datos de archivos LP con multiplicación por factores")
     st.dataframe(df_lp)
-
+    
     # Agregar suma de columnas D y E al df_d3
     for nombre_base in sumas_por_base.keys():
+    
         nombre_d = f"{nombre_base.upper()} 1 (D3)"
         nombre_e = f"{nombre_base.upper()} 2 (D3)"
         nombre_suma = f"{nombre_base.upper()} (D3 Total)"
-
+    
         if nombre_d in df_d3.columns and nombre_e in df_d3.columns:
             df_d3[nombre_suma] = df_d3[[nombre_d, nombre_e]].astype(float).sum(axis=1)
-
+    
+    # Mostrar df_d3
     st.subheader("Datos adicionales D3")
     st.dataframe(df_d3)
-
-# ============================
-#   TERCERA ETAPA: G1 SIEMPRE DISPONIBLE
-# ============================
-
-if archivo_g1 is not None:
-    st.subheader("Datos G1 (Central de Generación)")
-
-    df_g1_raw = pd.read_excel(archivo_g1, sheet_name=0, header=None)
-
-    num_columnas = df_g1_raw.shape[1]
-
-    # Definimos extracción segura
-    def extraer_columna(df, fila_ini, fila_fin, col):
-        if col < num_columnas:
-            return df.loc[fila_ini:fila_fin, col].reset_index(drop=True)
-        else:
-            return pd.Series([None]*(fila_fin - fila_ini + 1))
-
-    nombre_central = extraer_columna(df_g1_raw, 14, 25, 2)
-    tipo_generador = extraer_columna(df_g1_raw, 14, 25, 4)
-    numero_generador = extraer_columna(df_g1_raw, 14, 25, 5)
-    hp_mwh = extraer_columna(df_g1_raw, 14, 25, 9)
-    hfp_mwh = extraer_columna(df_g1_raw, 14, 25, 10)
-    total_mwh = extraer_columna(df_g1_raw, 14, 25, 11)
-    max_demanda = extraer_columna(df_g1_raw, 14, 25, 14)
-
-    df_g1 = pd.DataFrame({
-        "Nombre de la Central": nombre_central,
-        "Tipo de Generador": tipo_generador,
-        "Numero de Generador": numero_generador,
-        "HP (MWh)": hp_mwh,
-        "HFP (MWh)": hfp_mwh,
-        "Total (MWh)": total_mwh,
-        "Máxima Demanda (MW)": max_demanda
-    })
-
-    st.dataframe(df_g1)
+    
+    # ============================
+    #   TERCERA ETAPA: G1 INDEPENDIENTE
+    # ============================
+    
+    if archivo_g1 is not None:
+        st.subheader("Datos G1 (Central de Generación)")
+    
+        # Leer la primera hoja del archivo G1
+        df_g1_raw = pd.read_excel(archivo_g1, sheet_name=0, header=None)
+    
+        # Extraer los rangos solicitados
+        nombre_central = df_g1_raw.loc[14:25, 2].reset_index(drop=True)
+        tipo_generador = df_g1_raw.loc[14:25, 4].reset_index(drop=True)
+        numero_generador = df_g1_raw.loc[14:25, 5].reset_index(drop=True)
+        hp_mwh = df_g1_raw.loc[14:25, 9].reset_index(drop=True)
+        hfp_mwh = df_g1_raw.loc[14:25, 10].reset_index(drop=True)
+        total_mwh = df_g1_raw.loc[14:25, 11].reset_index(drop=True)
+        max_demanda = df_g1_raw.loc[14:25, 14].reset_index(drop=True)
+    
+        # Crear dataframe g1
+        df_g1 = pd.DataFrame({
+            "Nombre de la Central": nombre_central,
+            "Tipo de Generador": tipo_generador,
+            "Numero de Generador": numero_generador,
+            "HP (MWh)": hp_mwh,
+            "HFP (MWh)": hfp_mwh,
+            "Total (MWh)": total_mwh,
+            "Máxima Demanda (MW)": max_demanda
+        })
+    
