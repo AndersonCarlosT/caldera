@@ -178,19 +178,35 @@ with col1:
                 cols = cols[:idx_lp + 1] + [nombre_d, nombre_e, nombre_f] + cols[idx_lp + 1:]
     
         df_final = df_final[cols]
-    
+
         # Crear df_lp y df_d3
         columnas_lp = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if col in nombres_lp]
         df_lp = df_final[columnas_lp].copy()
-    
+        
         columnas_d3 = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if "(D3)" in col]
         df_d3 = df_final[columnas_d3].copy()
-    
-        # Multiplicación por factores
+        
+        # 🔧 Reordenar columnas de df_d3 para agrupar correctamente D3 por nombre base
+        columnas_base = ['Fecha', 'Hora', 'Horario']
+        columnas_d3_ordenadas = []
+        
         for nombre_lp in nombres_lp:
-            factor = factores.get(nombre_lp, 1)
-            nueva_col = f"{nombre_lp} * {factor}"
-            df_lp[nueva_col] = df_lp[nombre_lp].astype(float) * factor
+            nombre_base = re.sub(r'\d+', '', nombre_lp)
+            nombre_base = nombre_base.replace('.LP', '').strip().upper()
+            
+            col_1 = f"{nombre_base} 1 (D3)"
+            col_2 = f"{nombre_base} 2 (D3)"
+            col_3 = f"{nombre_base} 3 (D3)"
+            
+            for col in [col_1, col_2, col_3]:
+                if col in df_d3.columns:
+                    columnas_d3_ordenadas.append(col)
+        
+        # Agregar las columnas totales al final si existen
+        columnas_totales = [col for col in df_d3.columns if '(D3 Total)' in col]
+        
+        # Aplicar el nuevo orden
+        df_d3 = df_d3[columnas_base + columnas_d3_ordenadas + columnas_totales]
         
         # Sumar las multiplicaciones por nombre base (sin número)
         sumas_por_base = {}
