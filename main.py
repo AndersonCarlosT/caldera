@@ -8,7 +8,6 @@ st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (
 
 archivos_lp = st.file_uploader("Sube uno o más archivos .LP", type=["lp"], accept_multiple_files=True)
 archivo_excel = st.file_uploader("Sube el archivo Excel con múltiples hojas", type=["xlsx"])
-archivo_g1 = st.file_uploader("⚡ Sube el archivo Excel G1 (Generación)", type=["xlsx"])
 
 if archivos_lp and archivo_excel:
     # Factores fijos (no mostrados)
@@ -19,8 +18,8 @@ if archivos_lp and archivo_excel:
         "Nava 2.LP": 200,
         "Ravira 1.LP": 120,
         "Ravira 2.LP": 120,
-        "Canta 1.LP": 400,
-        "Canta 2.LP": 400
+        "Canta 1.LP": 1,
+        "Canta 2.LP": 1
     }
 
     # Selector de mes y año
@@ -192,69 +191,9 @@ if archivos_lp and archivo_excel:
         factor = factores.get(nombre_lp, 1)
         nueva_col = f"{nombre_lp} * Factor"
         df_lp[nueva_col] = df_lp[nombre_lp].astype(float) * factor
-    
-    # Sumar las multiplicaciones por nombre base (sin número)
-    sumas_por_base = {}
-    
-    for nombre_lp in nombres_lp:
-        nombre_base = re.sub(r'\d+', '', nombre_lp).replace('.LP', '').strip()
-    
-        columna_factor = f"{nombre_lp} * Factor"
-    
-        if nombre_base not in sumas_por_base:
-            sumas_por_base[nombre_base] = df_lp[columna_factor].copy()
-        else:
-            sumas_por_base[nombre_base] += df_lp[columna_factor]
-    
-    # Agregar columnas de suma al df_lp
-    for nombre_base, suma in sumas_por_base.items():
-        df_lp[f"{nombre_base} (Total)"] = suma
-    
-    # Mostrar df_lp
+
     st.subheader("Datos de archivos LP con multiplicación por factores")
     st.dataframe(df_lp)
-    
-    # Agregar suma de columnas D y E al df_d3
-    for nombre_base in sumas_por_base.keys():
-    
-        nombre_d = f"{nombre_base.upper()} 1 (D3)"
-        nombre_e = f"{nombre_base.upper()} 2 (D3)"
-        nombre_suma = f"{nombre_base.upper()} (D3 Total)"
-    
-        if nombre_d in df_d3.columns and nombre_e in df_d3.columns:
-            df_d3[nombre_suma] = df_d3[[nombre_d, nombre_e]].astype(float).sum(axis=1)
-    
-    # Mostrar df_d3
+
     st.subheader("Datos adicionales D3")
     st.dataframe(df_d3)
-    
-    # ============================
-    #   TERCERA ETAPA: G1 INDEPENDIENTE
-    # ============================
-    
-    if archivo_g1 is not None:
-        st.subheader("Datos G1 (Central de Generación)")
-    
-        # Leer la primera hoja del archivo G1
-        df_g1_raw = pd.read_excel(archivo_g1, sheet_name=0, header=None)
-    
-        # Extraer los rangos solicitados
-        nombre_central = df_g1_raw.loc[14:25, 2].reset_index(drop=True)
-        tipo_generador = df_g1_raw.loc[14:25, 4].reset_index(drop=True)
-        numero_generador = df_g1_raw.loc[14:25, 5].reset_index(drop=True)
-        hp_mwh = df_g1_raw.loc[14:25, 9].reset_index(drop=True)
-        hfp_mwh = df_g1_raw.loc[14:25, 10].reset_index(drop=True)
-        total_mwh = df_g1_raw.loc[14:25, 11].reset_index(drop=True)
-        max_demanda = df_g1_raw.loc[14:25, 14].reset_index(drop=True)
-    
-        # Crear dataframe g1
-        df_g1 = pd.DataFrame({
-            "Nombre de la Central": nombre_central,
-            "Tipo de Generador": tipo_generador,
-            "Numero de Generador": numero_generador,
-            "HP (MWh)": hp_mwh,
-            "HFP (MWh)": hfp_mwh,
-            "Total (MWh)": total_mwh,
-            "Máxima Demanda (MW)": max_demanda
-        })
-    
