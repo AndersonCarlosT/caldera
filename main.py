@@ -74,7 +74,7 @@ with col1:
         # Crear df_lp inicial con estructura base
         df_lp = df_base.copy()
 
-        # Factores
+        # Factores por columna
         factores = {
             "Acos 1.LP": 100,
             "Acos 2.LP": 100,
@@ -86,7 +86,10 @@ with col1:
             "Canta 2.LP": 1
         }
 
-        nombres_lp = []
+        # Inicializar todas las columnas LP con ceros
+        for col in factores.keys():
+            df_lp[col] = 0.0
+
         for archivo in archivos_lp:
             contenido = archivo.read().decode('utf-8')
             lineas = contenido.splitlines()
@@ -112,25 +115,44 @@ with col1:
             df_temp['Fecha'] = df_temp['Fecha/Hora'].dt.strftime("%d/%m/%Y")
             df_temp['Hora'] = df_temp['Fecha/Hora'].dt.strftime("%H:%M:%S")
 
-            col_lp = archivo.name
-            nombres_lp.append(col_lp)
+            # Detectar a qué central corresponde el archivo por su nombre
+            nombre_archivo = archivo.name.upper()
 
-            # Crear columna propia con valores en cero por defecto
-            df_lp[col_lp] = 0.0
+            columnas_objetivo = []
+            if "ACOS 1" in nombre_archivo:
+                columnas_objetivo = ["Acos 1.LP"]
+            elif "ACOS 2" in nombre_archivo:
+                columnas_objetivo = ["Acos 2.LP"]
+            elif "NAVA 1" in nombre_archivo:
+                columnas_objetivo = ["Nava 1.LP"]
+            elif "NAVA 2" in nombre_archivo:
+                columnas_objetivo = ["Nava 2.LP"]
+            elif "RAVIRA 1" in nombre_archivo:
+                columnas_objetivo = ["Ravira 1.LP"]
+            elif "RAVIRA 2" in nombre_archivo:
+                columnas_objetivo = ["Ravira 2.LP"]
+            elif "CANTA 1" in nombre_archivo:
+                columnas_objetivo = ["Canta 1.LP"]
+            elif "CANTA 2" in nombre_archivo:
+                columnas_objetivo = ["Canta 2.LP"]
+            else:
+                st.warning(f"Archivo {archivo.name} no se asignó a ninguna central conocida.")
+                continue
 
-            # Generar un diccionario con clave (fecha, hora) y valor el +P/kW
+            # Crear diccionario (Fecha, Hora) -> Valor
             temp_dict = dict(zip(zip(df_temp['Fecha'], df_temp['Hora']), df_temp['+P/kW']))
 
-            # Asignar valores si existen en el LP, sino dejar en cero
-            df_lp[col_lp] = df_lp.apply(
-                lambda row: float(temp_dict.get((row['Fecha'], row['Hora']), 0.0)),
-                axis=1
-            )
+            # Asignar valores sólo a la columna correspondiente
+            for col in columnas_objetivo:
+                df_lp[col] = df_lp.apply(
+                    lambda row: float(temp_dict.get((row['Fecha'], row['Hora']), row[col])),
+                    axis=1
+                )
 
         # Multiplicación por factores y suma por nombre base
         sumas_por_base = {}
 
-        for nombre_lp in nombres_lp:
+        for nombre_lp in factores.keys():
             factor = factores.get(nombre_lp, 1)
             nueva_col = f"{nombre_lp} * Factor"
             df_lp[nueva_col] = df_lp[nombre_lp] * factor
@@ -146,46 +168,6 @@ with col1:
 
         st.subheader("Primer DataFrame: LP con factores y sumas")
         st.dataframe(df_lp)
-
-        # Segundo dataframe D3
-        df_d3 = df_base.copy()
-        hojas_objetivo = ["ACOS", "RAVIRA", "NAVA", "CANTA"]
-
-        if archivo_excel:
-            excel_data = pd.ExcelFile(archivo_excel)
-
-            for hoja in hojas_objetivo:
-                if hoja in excel_data.sheet_names:
-                    df_hoja = pd.read_excel(archivo_excel, sheet_name=hoja, header=None)
-
-                    df_hoja['FechaTmp'] = pd.to_datetime(df_hoja[1], errors='coerce')
-                    df_hoja['HoraTmp'] = df_hoja[2].astype(str).str.strip()
-
-                    df_hoja = df_hoja[df_hoja['FechaTmp'].notna() & df_hoja['HoraTmp'].str.match(r'^\d{2}:\d{2}(:\d{2})?$')]
-
-                    df_hoja['Fecha'] = df_hoja['FechaTmp'].dt.strftime('%d/%m/%Y')
-                    df_hoja['Hora'] = df_hoja['HoraTmp']
-
-                    df_d3[f'{hoja} 1 (D3)'] = 0.0
-                    df_d3[f'{hoja} 2 (D3)'] = 0.0
-                    df_d3[f'{hoja} 3 (D3)'] = 0.0
-
-                    temp_dict_d3 = dict(zip(zip(df_hoja['Fecha'], df_hoja['Hora']),
-                                            zip(df_hoja[3], df_hoja[4], df_hoja[5])))
-
-                    def asignar_d3(row):
-                        vals = temp_dict_d3.get((row['Fecha'], row['Hora']), (0.0, 0.0, 0.0))
-                        return vals
-
-                    df_d3[[f'{hoja} 1 (D3)', f'{hoja} 2 (D3)', f'{hoja} 3 (D3)']] = df_d3.apply(
-                        lambda row: pd.Series(asignar_d3(row)),
-                        axis=1
-                    )
-
-                    df_d3[f"{hoja} (D3 Total)"] = df_d3[f'{hoja} 1 (D3)'] + df_d3[f'{hoja} 2 (D3)']
-
-        st.subheader("Segundo DataFrame: Datos D3")
-        st.dataframe(df_d3)
 
 with col2:
 
