@@ -231,10 +231,10 @@ with col2:
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
 
     if archivo_g1:
-        # Leer la hoja "G-01 CENTRALES"
+        # Leer todo el Excel G1 sin modificar estructura
         df_excel_g1 = pd.read_excel(archivo_g1, sheet_name="G-01 CENTRALES", header=None)
 
-        # Datos principales: C15:C26, E15:F26, J15:L26, O15:O26
+        # Procesamiento base para mostrar tabla G1 normal
         nombre_central = df_excel_g1.loc[14:25, 2]
         tipo_generador = df_excel_g1.loc[14:25, 4]
         numero_generador = df_excel_g1.loc[14:25, 5]
@@ -254,7 +254,6 @@ with col2:
         })
 
         # Datos adicionales fijos
-
         nuevas_centrales = ["Central Termica"] * 4
         nuevos_generadores = ["MODASA MP-515", "CUMMINS ZQ-4288", "COMMINS C900", "COMMINS 925kw"]
         nuevos_codigos = ["G0016", "G01044", "G0653", "G0047"]
@@ -277,12 +276,78 @@ with col2:
         # Concatenar y limpiar
         df_g1 = pd.concat([df_g1_base, df_g1_adicional], ignore_index=True)
 
-        # Eliminar filas 3, 6, 9 y 12
         filas_a_eliminar = [2, 5, 8, 11]
         df_g1 = df_g1.drop(filas_a_eliminar).reset_index(drop=True)
-
         df_g1 = df_g1.fillna(0)
 
-        # Mostrar resultado G1
         st.success("Datos de G1 procesados correctamente")
         st.dataframe(df_g1, use_container_width=True)
+
+        # Si ya existen los otros 2 dataframes, mostrar comparativo
+        if st.button("Ver Dataframe Final"):
+
+            # Definimos el comparativo
+            nombres = ["ACOS", "RAVIRA", "NAVA", "CANTA"]
+            tipos = ["Hidroelectrica", "Termica"]
+
+            filas = []
+
+            for nombre in nombres:
+                for tipo in tipos:
+                    fila = {
+                        "Nombre": nombre,
+                        "Central": tipo,
+                        "Energia (D3)": "",
+                        "Demanda (D3)": "",
+                        "Energia (G1)": "",
+                        "Demanda (G1)": "",
+                        "Energia (LP)": "",
+                        "Demanda (LP)": ""
+                    }
+
+                    # ---------------- D3 ----------------
+                    if tipo == "Hidroelectrica":
+                        col_d3_total = f"{nombre.upper()} (D3 Total)"
+                    else:
+                        col_d3_total = f"{nombre.upper()} 3 (D3)"
+
+                    if col_d3_total in df_d3.columns:
+                        suma_d3 = df_d3[col_d3_total].astype(float).sum()
+                        max_d3 = df_d3[col_d3_total].astype(float).max()
+                        fila["Energia (D3)"] = round(suma_d3 / 4000, 5)
+                        fila["Demanda (D3)"] = round(max_d3 / 1000, 5)
+
+                    # ---------------- G1 desde df_excel_g1 ----------------
+                    if tipo == "Hidroelectrica":
+                        fila_excel = {
+                            "ACOS": 16, "RAVIRA": 19, "NAVA": 22, "CANTA": 25
+                        }[nombre]
+                    else:
+                        fila_excel = {
+                            "ACOS": 48, "RAVIRA": 53, "NAVA": 58, "CANTA": 63
+                        }[nombre]
+
+                    energia_g1 = df_excel_g1.iloc[fila_excel, 11]  # L columna → índice 11
+                    demanda_g1 = df_excel_g1.iloc[fila_excel, 14]  # O columna → índice 14
+
+                    fila["Energia (G1)"] = energia_g1
+                    fila["Demanda (G1)"] = demanda_g1
+
+                    # ---------------- LP ----------------
+                    if tipo == "Hidroelectrica":
+                        col_lp_total = f"{nombre.capitalize()} (Total)"
+                    else:
+                        col_lp_total = None  # Termica no usa LP
+
+                    if col_lp_total and col_lp_total in df_lp.columns:
+                        suma_lp = df_lp[col_lp_total].astype(float).sum()
+                        max_lp = df_lp[col_lp_total].astype(float).max()
+                        fila["Energia (LP)"] = round(suma_lp / 4000, 5)
+                        fila["Demanda (LP)"] = round(max_lp / 1000, 5)
+
+                    filas.append(fila)
+
+            df_comparativo = pd.DataFrame(filas)
+
+            st.subheader("📊 Comparación Final de Datos")
+            st.dataframe(df_comparativo, use_container_width=True)
