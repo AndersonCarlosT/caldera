@@ -32,10 +32,9 @@ with col1:
             "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
         }
     
-
-        mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
-        numero_mes = meses[mes_seleccionado]
-        anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
+            mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
+            numero_mes = meses[mes_seleccionado]
+            anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
     
         feriados_input = st.text_input(f"Ingrese los días feriados de {mes_seleccionado} separados por comas (ejemplo: 5,7,15):")
     
@@ -156,43 +155,49 @@ with col1:
                     df_final = pd.merge(df_final, df_hoja_out, on=['Fecha', 'Hora'], how='left')
             else:
                 st.warning(f"No se encontró la hoja '{nombre_base}' en el Excel.")
-
-        # Crear df_lp y df_d3
-        columnas_lp = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if col in nombres_lp]
-        df_lp = df_final[columnas_lp].copy()
-        
-        columnas_d3 = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if "(D3)" in col]
-        df_d3 = df_final[columnas_d3].copy()
-        
-        # 🔧 Reordenar columnas de df_d3 para agrupar correctamente D3 por nombre base
-        columnas_base = ['Fecha', 'Hora', 'Horario']
-        columnas_d3_ordenadas = []
-        
+    
+        # Reordenar columnas para poner D3 al lado del archivo LP correspondiente
+        cols = df_final.columns.tolist()
+    
         for nombre_lp in nombres_lp:
             nombre_base = re.sub(r'\d+', '', nombre_lp)
             nombre_base = nombre_base.replace('.LP', '').strip().upper()
-            
-            col_1 = f"{nombre_base} 1 (D3)"
-            col_2 = f"{nombre_base} 2 (D3)"
-            col_3 = f"{nombre_base} 3 (D3)"
-            
-            for col in [col_1, col_2, col_3]:
-                if col in df_d3.columns:
-                    columnas_d3_ordenadas.append(col)
-        
-        # Agregar las columnas totales al final si existen
-        columnas_totales = [col for col in df_d3.columns if '(D3 Total)' in col]
-        
-        # Aplicar el nuevo orden
-        df_d3 = df_d3[columnas_base + columnas_d3_ordenadas + columnas_totales]
+    
+            nombre_d = f"{nombre_base} 1 (D3)"
+            nombre_e = f"{nombre_base} 2 (D3)"
+            nombre_f = f"{nombre_base} 3 (D3)"
+    
+            if nombre_d in cols and nombre_e in cols and nombre_f in cols:
+                idx_lp = cols.index(nombre_lp)
+    
+                cols.remove(nombre_d)
+                cols.remove(nombre_e)
+                cols.remove(nombre_f)
+    
+                cols = cols[:idx_lp + 1] + [nombre_d, nombre_e, nombre_f] + cols[idx_lp + 1:]
+    
+        df_final = df_final[cols]
+    
+        # Crear df_lp y df_d3
+        columnas_lp = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if col in nombres_lp]
+        df_lp = df_final[columnas_lp].copy()
+    
+        columnas_d3 = ['Fecha', 'Hora', 'Horario'] + [col for col in df_final.columns if "(D3)" in col]
+        df_d3 = df_final[columnas_d3].copy()
+    
+        # Multiplicación por factores
+        for nombre_lp in nombres_lp:
+            factor = factores.get(nombre_lp, 1)
+            nueva_col = f"{nombre_lp} * Factor"
+            df_lp[nueva_col] = df_lp[nombre_lp].astype(float) * factor
         
         # Sumar las multiplicaciones por nombre base (sin número)
         sumas_por_base = {}
         
         for nombre_lp in nombres_lp:
             nombre_base = re.sub(r'\d+', '', nombre_lp).replace('.LP', '').strip()
-            factor = factores.get(nombre_lp, 1)
-            columna_factor = f"{nombre_lp} * {factor}"  # 👈 coherente con el nombre generado
+        
+            columna_factor = f"{nombre_lp} * Factor"
         
             if nombre_base not in sumas_por_base:
                 sumas_por_base[nombre_base] = df_lp[columna_factor].copy()
@@ -279,4 +284,5 @@ with col2:
         df_g1 = df_g1.fillna(0)
 
         # Mostrar resultado G1
+        st.success("Datos de G1 procesados correctamente")
         st.dataframe(df_g1, use_container_width=True)
