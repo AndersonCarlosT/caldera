@@ -10,110 +10,75 @@ st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (
 col1, col2 = st.columns(2)
 
 with col1:
-    # Inputs del usuario
-    meses = {
-        "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
-        "Mayo": 5, "Junio": 6, "Julio": 7, "Agosto": 8,
-        "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
-    }
+    st.title("📊 Visualizador de Datos LP por Intervalos de 15 Minutos")
     
-    mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
-    numero_mes = meses[mes_seleccionado]
+    # Selección de mes y año
+    anio = st.selectbox("Selecciona el Año", list(range(2020, datetime.now().year + 1)), index=datetime.now().year - 2020)
+    mes = st.selectbox("Selecciona el Mes", list(range(1, 13)), index=datetime.now().month - 1)
     
-    anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
-    
-    feriados_input = st.text_input("Días feriados del mes separados por comas (ejemplo: 5,10,15):")
-    if feriados_input.strip() != "":
-        try:
-            dias_feriados = [int(x.strip()) for x in feriados_input.split(",")]
-        except:
-            st.error("Formato inválido.")
-            dias_feriados = []
-    else:
-        dias_feriados = []
-    
-    archivos_lp = st.file_uploader("Sube los archivos .LP", type=["lp"], accept_multiple_files=True)
-    
-    # Botón de generar
-    if st.button("Generar Tabla Final"):
-    
-        # Crear estructura base de fechas y horas cada 15 min desde 00:15
-        inicio_mes = datetime(anio_seleccionado, numero_mes, 1, 0, 15)
-        if numero_mes == 12:
-            fin_mes = datetime(anio_seleccionado + 1, 1, 1)
+    # Generar dataframe base fijo
+    def generar_base(anio, mes):
+        inicio = datetime(anio, mes, 1)
+        if mes == 12:
+            fin = datetime(anio + 1, 1, 1)
         else:
-            fin_mes = datetime(anio_seleccionado, numero_mes + 1, 1)
+            fin = datetime(anio, mes + 1, 1)
+            
+        fechas = []
+        horas = []
     
-        fechas_horas = pd.date_range(start=inicio_mes, end=fin_mes - timedelta(minutes=15), freq="15min")
-    
+        fecha_actual = inicio
+        while fecha_actual < fin:
+            for i in range(96):  # 96 intervalos de 15 minutos
+                hora_intervalo = (datetime.min + timedelta(minutes=15*(i+1))).time() if i < 95 else datetime.min.time()
+                fechas.append(fecha_actual.date())
+                horas.append(hora_intervalo.strftime("%H:%M"))
+            fecha_actual += timedelta(days=1)
+        
         df_base = pd.DataFrame({
-            "Fecha": fechas_horas.strftime("%d/%m/%Y"),
-            "Hora": fechas_horas.strftime("%H:%M:%S")
+            "Fecha": fechas,
+            "Hora": horas
         })
+        return df_base
     
-        # Columna HP / HFP
-        def clasificar_hp_hfp(fecha_str, hora_str):
-            fecha = datetime.strptime(fecha_str + " " + hora_str, "%d/%m/%Y %H:%M:%S")
-            dia = fecha.day
-            dia_semana = fecha.weekday()
+    df_base = generar_base(anio, mes)
     
-            if dia in dias_feriados or dia_semana == 6:
-                return "HFP"
+    st.write("### DataFrame Base Generado:")
+    st.dataframe(df_base)
     
-            hora = fecha.time()
-            if hora >= datetime.strptime("18:15:00", "%H:%M:%S").time() and hora <= datetime.strptime("23:00:00", "%H:%M:%S").time():
-                return "HP"
-            else:
-                return "HFP"
+    # Subir archivo LP
+    archivo_lp = st.file_uploader("📂 Sube el archivo LP (Excel o CSV)", type=["xlsx", "csv"])
     
-        df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
+    if archivo_lp is not None:
+        # Leer el archivo LP
+        if archivo_lp.name.endswith('.xlsx'):
+            df_lp = pd.read_excel(archivo_lp)
+        else:
+            df_lp = pd.read_csv(archivo_lp)
     
-        # Crear copia del df_base para resultado
-        df_resultado = df_base.copy()
+        # Asegurarse que las columnas estén correctamente definidas
+        df_lp.columns = ["Fecha", "Hora", "Dato"]
+        
+        # Convertir Fecha a datetime.date si es necesario
+        df_lp["Fecha"] = pd.to_datetime(df_lp["Fecha"]).dt.date
+        df_lp["Hora"] = df_lp["Hora"].apply(lambda x: x if isinstance(x, str) else str(x))
     
-        # Procesar cada archivo LP por separado y sin cruzar datos
-        for archivo in archivos_lp:
-            contenido = archivo.read().decode('utf-8')
-            lineas = contenido.splitlines()
+        # Hacer el merge
+        df_resultado = pd.merge(df_base, df_lp, on=["Fecha", "Hora"], how="left")
+        
+        # Rellenar NaN con 0
+        df_resultado["Dato"] = df_resultado["Dato"].fillna(0)
     
-            # Buscar encabezado
-            indice_inicio = None
-            for i, linea in enumerate(lineas):
-                if linea.strip().startswith("Fecha/Hora"):
-                    indice_inicio = i
-                    break
+        st.write("### DataFrame Final (Match realizado):")
+        st.dataframe(df_resultado)
     
-            if indice_inicio is None:
-                st.error(f"No se encontró 'Fecha/Hora' en {archivo.name}.")
-                continue
+        # Descargar como Excel
+        output = pd.ExcelWriter("LP_match.xlsx", engine='xlsxwriter')
+        df_resultado.to_excel(output, index=False, sheet_name="Match")
+        output.close()
     
-            datos_lp = "\n".join(lineas[indice_inicio:])
-            df_lp_temp = pd.read_csv(io.StringIO(datos_lp), sep=";", engine='python')
-            df_lp_temp.columns = [col.strip() for col in df_lp_temp.columns]
-            df_lp_temp = df_lp_temp.dropna(axis=1, how='all')
-    
-            # Limpiar y separar fecha y hora
-            df_lp_temp['Fecha/Hora'] = pd.to_datetime(df_lp_temp['Fecha/Hora'], format='%d/%m/%Y %H:%M:%S')
-            df_lp_temp['Fecha'] = df_lp_temp['Fecha/Hora'].dt.strftime("%d/%m/%Y")
-            df_lp_temp['Hora'] = df_lp_temp['Fecha/Hora'].dt.strftime("%H:%M:%S")
-    
-            # Ordenar correctamente
-            df_lp_temp = df_lp_temp.sort_values(by='Fecha/Hora')
-    
-            # Crear dataframe individual por LP para verificación
-            df_individual = df_lp_temp[['Fecha', 'Hora', '+P/kW']].copy()
-            df_individual = df_individual.rename(columns={'+P/kW': archivo.name})
-    
-            # Mostrar dataframe individual para diagnóstico
-            st.subheader(f"Datos de {archivo.name}")
-            st.dataframe(df_individual)
-    
-            # Hacer merge individual sin afectar a otros archivos
-            df_merge = pd.merge(df_base[['Fecha', 'Hora']], df_individual, on=['Fecha', 'Hora'], how='left')
-            df_resultado[archivo.name] = df_merge[archivo.name].astype(float).fillna(0)
-    
-        st.subheader("Tabla Final Generada (Ceros correctos y sin mezcla de datos)")
-        st.dataframe(df_resultado, use_container_width=True)
+        with open("LP_match.xlsx", "rb") as file:
+            st.download_button("📥 Descargar Excel", data=file, file_name=f"LP_{anio}_{mes:02d}_match.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 with col2:
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
