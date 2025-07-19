@@ -8,6 +8,7 @@ st.set_page_config(page_title="Comparador de Perfiles", layout="wide")
 st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (D3) + Factores de Multiplicación")
 
 col1, col2 = st.columns(2)
+
 with col1:
     st.header("Generación de Dataframes Base")
 
@@ -39,7 +40,7 @@ with col1:
 
     if st.button("Generar Dataframes"):
 
-        # Generar estructura base fija de fechas/horas
+        # Generar estructura base fija de fechas/horas desde 00:15
         inicio_mes = datetime(anio_seleccionado, numero_mes, 1, 0, 15)
         if numero_mes == 12:
             fin_mes = datetime(anio_seleccionado + 1, 1, 1)
@@ -114,17 +115,17 @@ with col1:
             col_lp = archivo.name
             nombres_lp.append(col_lp)
 
-            # Crear columna propia sin hacer merge acumulativo
-            df_lp[col_lp] = 0  # Inicializa en cero
+            # Crear columna propia con valores en cero por defecto
+            df_lp[col_lp] = 0.0
 
-            # Asigna valores donde hay match
-            idx_match = df_lp.set_index(['Fecha', 'Hora']).index.intersection(
-                df_temp.set_index(['Fecha', 'Hora']).index
+            # Generar un diccionario con clave (fecha, hora) y valor el +P/kW
+            temp_dict = dict(zip(zip(df_temp['Fecha'], df_temp['Hora']), df_temp['+P/kW']))
+
+            # Asignar valores si existen en el LP, sino dejar en cero
+            df_lp[col_lp] = df_lp.apply(
+                lambda row: float(temp_dict.get((row['Fecha'], row['Hora']), 0.0)),
+                axis=1
             )
-
-            for fecha, hora in idx_match:
-                valor = df_temp.loc[(df_temp['Fecha'] == fecha) & (df_temp['Hora'] == hora), '+P/kW'].values[0]
-                df_lp.loc[(df_lp['Fecha'] == fecha) & (df_lp['Hora'] == hora), col_lp] = float(valor)
 
         # Multiplicación por factores y suma por nombre base
         sumas_por_base = {}
@@ -165,24 +166,27 @@ with col1:
                     df_hoja['Fecha'] = df_hoja['FechaTmp'].dt.strftime('%d/%m/%Y')
                     df_hoja['Hora'] = df_hoja['HoraTmp']
 
-                    df_d3[f'{hoja} 1 (D3)'] = 0
-                    df_d3[f'{hoja} 2 (D3)'] = 0
-                    df_d3[f'{hoja} 3 (D3)'] = 0
+                    df_d3[f'{hoja} 1 (D3)'] = 0.0
+                    df_d3[f'{hoja} 2 (D3)'] = 0.0
+                    df_d3[f'{hoja} 3 (D3)'] = 0.0
 
-                    idx_match = df_d3.set_index(['Fecha', 'Hora']).index.intersection(
-                        df_hoja.set_index(['Fecha', 'Hora']).index
+                    temp_dict_d3 = dict(zip(zip(df_hoja['Fecha'], df_hoja['Hora']),
+                                            zip(df_hoja[3], df_hoja[4], df_hoja[5])))
+
+                    def asignar_d3(row):
+                        vals = temp_dict_d3.get((row['Fecha'], row['Hora']), (0.0, 0.0, 0.0))
+                        return vals
+
+                    df_d3[[f'{hoja} 1 (D3)', f'{hoja} 2 (D3)', f'{hoja} 3 (D3)']] = df_d3.apply(
+                        lambda row: pd.Series(asignar_d3(row)),
+                        axis=1
                     )
-
-                    for fecha, hora in idx_match:
-                        fila = df_hoja.loc[(df_hoja['Fecha'] == fecha) & (df_hoja['Hora'] == hora)]
-                        df_d3.loc[(df_d3['Fecha'] == fecha) & (df_d3['Hora'] == hora), f'{hoja} 1 (D3)'] = fila.iloc[0, 3]
-                        df_d3.loc[(df_d3['Fecha'] == fecha) & (df_d3['Hora'] == hora), f'{hoja} 2 (D3)'] = fila.iloc[0, 4]
-                        df_d3.loc[(df_d3['Fecha'] == fecha) & (df_d3['Hora'] == hora), f'{hoja} 3 (D3)'] = fila.iloc[0, 5]
 
                     df_d3[f"{hoja} (D3 Total)"] = df_d3[f'{hoja} 1 (D3)'] + df_d3[f'{hoja} 2 (D3)']
 
         st.subheader("Segundo DataFrame: Datos D3")
         st.dataframe(df_d3)
+
 with col2:
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
