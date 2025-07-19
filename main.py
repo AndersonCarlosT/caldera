@@ -68,15 +68,15 @@ with col1:
     
         df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
     
-        # Crear una copia del df_base para ir agregando columnas sin duplicar filas
+        # Crear copia del df_base para resultado
         df_resultado = df_base.copy()
     
-        # Procesar cada archivo LP y generar columnas independientes
+        # Procesar cada archivo LP por separado y sin cruzar datos
         for archivo in archivos_lp:
             contenido = archivo.read().decode('utf-8')
             lineas = contenido.splitlines()
     
-            # Buscar encabezado de datos
+            # Buscar encabezado
             indice_inicio = None
             for i, linea in enumerate(lineas):
                 if linea.strip().startswith("Fecha/Hora"):
@@ -97,19 +97,22 @@ with col1:
             df_lp_temp['Fecha'] = df_lp_temp['Fecha/Hora'].dt.strftime("%d/%m/%Y")
             df_lp_temp['Hora'] = df_lp_temp['Fecha/Hora'].dt.strftime("%H:%M:%S")
     
-            # Ordenar por fecha y hora (por seguridad)
+            # Ordenar correctamente
             df_lp_temp = df_lp_temp.sort_values(by='Fecha/Hora')
     
-            # Obtener los datos de +P/kW con nombre del archivo
-            nombre_columna = archivo.name
-            df_datos = df_lp_temp[['Fecha', 'Hora', '+P/kW']].copy()
-            df_datos = df_datos.rename(columns={'+P/kW': nombre_columna})
+            # Crear dataframe individual por LP para verificación
+            df_individual = df_lp_temp[['Fecha', 'Hora', '+P/kW']].copy()
+            df_individual = df_individual.rename(columns={'+P/kW': archivo.name})
     
-            # Merge temporal SOLO con la columna actual
-            df_merged = pd.merge(df_base[['Fecha', 'Hora']], df_datos, on=['Fecha', 'Hora'], how='left')
-            df_resultado[nombre_columna] = df_merged[nombre_columna].astype(float).fillna(0)
+            # Mostrar dataframe individual para diagnóstico
+            st.subheader(f"Datos de {archivo.name}")
+            st.dataframe(df_individual)
     
-        st.subheader("Tabla Final Generada (Sin duplicados y con ceros correctos)")
+            # Hacer merge individual sin afectar a otros archivos
+            df_merge = pd.merge(df_base[['Fecha', 'Hora']], df_individual, on=['Fecha', 'Hora'], how='left')
+            df_resultado[archivo.name] = df_merge[archivo.name].astype(float).fillna(0)
+    
+        st.subheader("Tabla Final Generada (Ceros correctos y sin mezcla de datos)")
         st.dataframe(df_resultado, use_container_width=True)
 with col2:
 
