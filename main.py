@@ -10,8 +10,6 @@ st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (
 col1, col2 = st.columns(2)
 
 with col1:
-    st.title("🗓️ Generador de Tabla Base con Archivos LP")
-    
     # Inputs del usuario
     meses = {
         "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
@@ -70,7 +68,10 @@ with col1:
     
         df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
     
-        # Procesar cada archivo LP y hacer merge con la base
+        # Crear una copia del df_base para ir agregando columnas sin duplicar filas
+        df_resultado = df_base.copy()
+    
+        # Procesar cada archivo LP y generar columnas independientes
         for archivo in archivos_lp:
             contenido = archivo.read().decode('utf-8')
             lineas = contenido.splitlines()
@@ -96,22 +97,20 @@ with col1:
             df_lp_temp['Fecha'] = df_lp_temp['Fecha/Hora'].dt.strftime("%d/%m/%Y")
             df_lp_temp['Hora'] = df_lp_temp['Fecha/Hora'].dt.strftime("%H:%M:%S")
     
-            # Ordenar por fecha y hora (por si acaso)
+            # Ordenar por fecha y hora (por seguridad)
             df_lp_temp = df_lp_temp.sort_values(by='Fecha/Hora')
     
-            # Obtener la columna de +P/kW y renombrar con el nombre del archivo
+            # Obtener los datos de +P/kW con nombre del archivo
             nombre_columna = archivo.name
             df_datos = df_lp_temp[['Fecha', 'Hora', '+P/kW']].copy()
             df_datos = df_datos.rename(columns={'+P/kW': nombre_columna})
     
-            # Hacer merge con la base
-            df_base = pd.merge(df_base, df_datos, on=['Fecha', 'Hora'], how='left')
+            # Merge temporal SOLO con la columna actual
+            df_merged = pd.merge(df_base[['Fecha', 'Hora']], df_datos, on=['Fecha', 'Hora'], how='left')
+            df_resultado[nombre_columna] = df_merged[nombre_columna].astype(float).fillna(0)
     
-            # Rellenar con ceros donde no haya datos
-            df_base[nombre_columna] = df_base[nombre_columna].astype(float).fillna(0)
-    
-        st.subheader("Tabla Final Generada")
-        st.dataframe(df_base, use_container_width=True)
+        st.subheader("Tabla Final Generada (Sin duplicados y con ceros correctos)")
+        st.dataframe(df_resultado, use_container_width=True)
 with col2:
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
