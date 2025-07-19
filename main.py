@@ -49,28 +49,32 @@ with col1:
     st.write("### DataFrame Base Generado:")
     st.dataframe(df_base)
     
-    # Función robusta para leer archivo .LP
+    # Función robusta para leer archivo .LP con encabezado correcto
     def leer_archivo_lp(archivo):
         contenido = archivo.read().decode("utf-8").splitlines()
 
-        # Buscar línea donde empiezan los datos
+        # Buscar línea donde empiezan los datos y obtener encabezados
         for i, linea in enumerate(contenido):
             if linea.strip().startswith("Fecha/Hora"):
+                encabezados = [h.strip() for h in linea.strip().split(";")]
                 inicio_datos = i + 1
                 break
         else:
             st.error("❌ No se encontró la línea 'Fecha/Hora' en el archivo. Verifica el formato del archivo .LP.")
             return None
 
-        # Leer los datos desde la línea identificada
+        # Leer los datos desde la línea identificada sin encabezado
         datos = "\n".join(contenido[inicio_datos:])
 
-        df_lp = pd.read_csv(io.StringIO(datos), sep=";", engine="python", skipinitialspace=True)
+        df_lp = pd.read_csv(io.StringIO(datos), sep=";", header=None, engine="python", skipinitialspace=True)
+
+        # Asignar encabezados manualmente
+        df_lp.columns = encabezados
 
         # Limpiar columnas de espacios
         df_lp.columns = [col.strip() for col in df_lp.columns]
 
-        # Buscar columnas con tolerancia a errores
+        # Buscar columnas relevantes
         col_fechahora = [col for col in df_lp.columns if 'Fecha/Hora' in col]
         col_pkw = [col for col in df_lp.columns if '+P/kW' in col]
 
