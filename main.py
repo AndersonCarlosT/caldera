@@ -10,6 +10,12 @@ st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (
 col1, col2 = st.columns(2)
 
 with col1:
+
+    meses = {
+    "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
+    "Mayo": 5, "Junio": 6, "Julio": 7, "Agosto": 8,
+    "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12}
+    
     mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
     numero_mes = meses[mes_seleccionado]
 
