@@ -8,9 +8,8 @@ st.set_page_config(page_title="Comparador de Perfiles", layout="wide")
 st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (D3) + Factores de Multiplicación")
 
 col1, col2 = st.columns(2)
-
 with col1:
-    st.header("Generación de Dataframes LP y D3 - Columna 1")
+    st.header("Generación de Dataframes LP y D3 - Corregido")
 
     # Inputs usuario
     meses = {
@@ -40,7 +39,7 @@ with col1:
 
     if st.button("Generar Dataframes"):
 
-        # Crear dataframe base de fechas y horas desde 00:15
+        # Crear dataframe base desde 00:15
         inicio_mes = datetime(anio_seleccionado, numero_mes, 1, 0, 15)
         if numero_mes == 12:
             fin_mes = datetime(anio_seleccionado + 1, 1, 1)
@@ -71,9 +70,6 @@ with col1:
 
         df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
 
-        # Iniciar df_lp con columnas base
-        df_lp = df_base.copy()
-
         # Factores conocidos
         factores = {
             "Acos 1.LP": 100,
@@ -86,8 +82,13 @@ with col1:
             "Canta 2.LP": 1
         }
 
-        # Procesar cada archivo LP independientemente
-        nombres_lp = []
+        # Inicializar dataframe LP con solo la base
+        df_lp = df_base.copy()
+
+        sumas_por_base = {}
+        dfs_individuales = {}
+
+        # Procesar cada archivo LP de forma separada
         for archivo in archivos_lp:
             contenido = archivo.read().decode('utf-8')
             lineas = contenido.splitlines()
@@ -115,37 +116,43 @@ with col1:
             df_temp['Hora'] = df_temp['Fecha/Hora'].dt.strftime("%H:%M:%S")
 
             nombre_columna = archivo.name
-            nombres_lp.append(nombre_columna)
 
             df_archivo = df_temp[['Fecha', 'Hora', '+P/kW']].copy()
             df_archivo = df_archivo.rename(columns={'+P/kW': nombre_columna})
 
-            # Hacer merge con df_base para mantener estructura fija
-            df_lp = pd.merge(df_lp, df_archivo, on=['Fecha', 'Hora'], how='left')
+            # Guardar dataframe individual para revisión
+            dfs_individuales[nombre_columna] = df_archivo
 
-        # Rellenar con ceros donde no hay datos
-        for col in nombres_lp:
-            df_lp[col] = df_lp[col].astype(float).fillna(0)
+            # Hacer merge con df_base (NO con df_lp) para evitar combinaciones incorrectas
+            df_merge = pd.merge(df_base, df_archivo, on=['Fecha', 'Hora'], how='left')
+            df_merge[nombre_columna] = df_merge[nombre_columna].astype(float).fillna(0)
 
-        # Multiplicación por factores y suma por nombre base
-        sumas_por_base = {}
+            # Agregar al df_lp
+            df_lp[nombre_columna] = df_merge[nombre_columna]
 
-        for nombre_lp in nombres_lp:
-            factor = factores.get(nombre_lp, 1)
-            nueva_col = f"{nombre_lp} * Factor"
-            df_lp[nueva_col] = df_lp[nombre_lp] * factor
+            # Multiplicación por factor y suma por base
+            factor = factores.get(nombre_columna, 1)
+            nueva_col = f"{nombre_columna} * Factor"
+            df_lp[nueva_col] = df_lp[nombre_columna] * factor
 
-            nombre_base = re.sub(r'\d+', '', nombre_lp).replace('.LP', '').strip()
+            nombre_base = re.sub(r'\d+', '', nombre_columna).replace('.LP', '').strip()
             if nombre_base not in sumas_por_base:
                 sumas_por_base[nombre_base] = df_lp[nueva_col].copy()
             else:
                 sumas_por_base[nombre_base] += df_lp[nueva_col]
 
+        # Agregar las columnas de suma por base
         for nombre_base, suma in sumas_por_base.items():
             df_lp[f"{nombre_base} (Total)"] = suma
 
         st.subheader("Primer DataFrame: LP con factores y sumas")
         st.dataframe(df_lp, use_container_width=True)
+
+        # Mostrar los dataframes individuales por archivo LP
+        st.subheader("Verificación: DataFrames individuales por archivo LP")
+        for nombre, df_individual in dfs_individuales.items():
+            st.markdown(f"#### {nombre}")
+            st.dataframe(df_individual, use_container_width=True)
 
         # Segundo dataframe D3
         df_d3 = df_base.copy()
@@ -183,7 +190,6 @@ with col1:
 
         st.subheader("Segundo DataFrame: Datos D3")
         st.dataframe(df_d3, use_container_width=True)
-
 with col2:
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
