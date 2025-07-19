@@ -13,7 +13,7 @@ col1, col2 = st.columns(2)
 with col1:
     st.header("Generación de Dataframes Base")
 
-    # Inputs del usuario
+    # Inputs usuario
     meses = {
         "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
         "Mayo": 5, "Junio": 6, "Julio": 7, "Agosto": 8,
@@ -36,13 +36,12 @@ with col1:
     else:
         dias_feriados = []
 
-    # Archivos
     archivos_lp = st.file_uploader("Sube los archivos .LP", type=["lp"], accept_multiple_files=True)
     archivo_excel = st.file_uploader("Sube el archivo Excel con hojas D3", type=["xlsx"])
 
     if st.button("Generar Dataframes"):
 
-        # Generar estructura base
+        # Generar estructura base fija de fechas/horas
         inicio_mes = datetime(anio_seleccionado, numero_mes, 1, 0, 15)
         if numero_mes == 12:
             fin_mes = datetime(anio_seleccionado + 1, 1, 1)
@@ -73,9 +72,10 @@ with col1:
 
         df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
 
+        # Iniciar dataframe LP con la estructura base
         df_lp = df_base.copy()
 
-        # Leer LP y completar con ceros
+        # Factores
         factores = {
             "Acos 1.LP": 100,
             "Acos 2.LP": 100,
@@ -119,9 +119,10 @@ with col1:
             df_merge = df_temp[['Fecha', 'Hora', '+P/kW']].copy()
             df_merge = df_merge.rename(columns={'+P/kW': col_lp})
 
+            # Merge con la estructura base para evitar duplicados
             df_lp = pd.merge(df_lp, df_merge, on=['Fecha', 'Hora'], how='left')
 
-        # Rellenar valores faltantes con 0
+        # Rellenar NaN con 0 por cada columna LP
         for col in nombres_lp:
             df_lp[col] = df_lp[col].astype(float).fillna(0)
 
@@ -133,21 +134,19 @@ with col1:
             nueva_col = f"{nombre_lp} * Factor"
             df_lp[nueva_col] = df_lp[nombre_lp] * factor
 
-            # Agrupar por nombre base (sin número)
             nombre_base = re.sub(r'\d+', '', nombre_lp).replace('.LP', '').strip()
             if nombre_base not in sumas_por_base:
                 sumas_por_base[nombre_base] = df_lp[nueva_col].copy()
             else:
                 sumas_por_base[nombre_base] += df_lp[nueva_col]
 
-        # Agregar columnas de suma al df_lp
         for nombre_base, suma in sumas_por_base.items():
             df_lp[f"{nombre_base} (Total)"] = suma
 
         st.subheader("Primer DataFrame: LP con factores y sumas")
         st.dataframe(df_lp)
 
-        # Segundo DataFrame D3
+        # Segundo dataframe D3
         df_d3 = df_base.copy()
         hojas_objetivo = ["ACOS", "RAVIRA", "NAVA", "CANTA"]
 
