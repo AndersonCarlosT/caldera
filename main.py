@@ -49,7 +49,7 @@ with col1:
     st.write("### DataFrame Base Generado:")
     st.dataframe(df_base)
     
-    # Función para leer archivo .LP
+    # Función para leer archivo .LP robusta
     def leer_archivo_lp(archivo):
         contenido = archivo.read().decode("utf-8").splitlines()
     
@@ -63,23 +63,27 @@ with col1:
         datos = "\n".join(contenido[inicio_datos:])
     
         df_lp = pd.read_csv(io.StringIO(datos), sep=";", engine="python", skipinitialspace=True)
-    
-        # Limpiar columnas
+
+        # Limpiar columnas de espacios
         df_lp.columns = [col.strip() for col in df_lp.columns]
-    
-        # Extraer solo Fecha/Hora y +P/kW
-        df_lp = df_lp[["Fecha/Hora", "+P/kW"]]
-    
+
+        # Buscar las columnas correctas aunque tengan espacios o diferencias
+        col_fechahora = [col for col in df_lp.columns if 'Fecha/Hora' in col][0]
+        col_pkw = [col for col in df_lp.columns if '+P/kW' in col][0]
+
+        # Extraer solo las columnas necesarias
+        df_lp = df_lp[[col_fechahora, col_pkw]]
+
         # Separar fecha y hora en formato requerido
-        df_lp["Fecha"] = pd.to_datetime(df_lp["Fecha/Hora"], dayfirst=True).dt.strftime("%d/%m/%Y")
-        df_lp["Hora"] = pd.to_datetime(df_lp["Fecha/Hora"], dayfirst=True).dt.strftime("%H:%M")
-    
+        df_lp["Fecha"] = pd.to_datetime(df_lp[col_fechahora], dayfirst=True).dt.strftime("%d/%m/%Y")
+        df_lp["Hora"] = pd.to_datetime(df_lp[col_fechahora], dayfirst=True).dt.strftime("%H:%M")
+
         # Renombrar columna de datos
-        df_lp.rename(columns={"+P/kW": "Dato"}, inplace=True)
-    
+        df_lp.rename(columns={col_pkw: "Dato"}, inplace=True)
+
         # Dejar solo las columnas necesarias
         df_lp = df_lp[["Fecha", "Hora", "Dato"]]
-    
+
         return df_lp
     
     # Subir archivo LP
