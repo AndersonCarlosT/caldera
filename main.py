@@ -62,7 +62,7 @@ with col1:
         # Leer los datos desde la línea identificada
         datos = "\n".join(contenido[inicio_datos:])
     
-        df_lp = pd.read_csv(StringIO(datos), sep=";", engine="python", skipinitialspace=True)
+        df_lp = pd.read_csv(io.StringIO(datos), sep=";", engine="python", skipinitialspace=True)
     
         # Limpiar columnas
         df_lp.columns = [col.strip() for col in df_lp.columns]
@@ -100,8 +100,8 @@ with col1:
         st.write("### DataFrame Final con Match:")
         st.dataframe(df_resultado)
     
-        # Descargar resultado en Excel
-        output = StringIO()
+        # Descargar resultado en CSV
+        output = io.StringIO()
         df_resultado.to_csv(output, index=False, sep=";", decimal=".", encoding="utf-8")
         output.seek(0)
     
