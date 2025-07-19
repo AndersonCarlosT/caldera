@@ -8,38 +8,21 @@ st.set_page_config(page_title="Comparador de Perfiles", layout="wide")
 st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (D3) + Factores de Multiplicación")
 
 col1, col2 = st.columns(2)
+
 with col1:
-    st.header("Generación de Dataframes LP y D3 - Corregido")
-
-    # Inputs usuario
-    meses = {
-        "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
-        "Mayo": 5, "Junio": 6, "Julio": 7, "Agosto": 8,
-        "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
-    }
-
     mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
     numero_mes = meses[mes_seleccionado]
 
     anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
 
-    feriados_input = st.text_input("Días feriados del mes separados por comas (ejemplo: 5,7,15):")
-
-    if feriados_input.strip() != "":
-        try:
-            dias_feriados = [int(x.strip()) for x in feriados_input.split(",")]
-        except:
-            st.error("Formato inválido.")
-            dias_feriados = []
-    else:
-        dias_feriados = []
+    feriados_input = st.text_input("Días feriados (ejemplo: 5,7,15):")
+    dias_feriados = [int(x.strip()) for x in feriados_input.split(",")] if feriados_input else []
 
     archivos_lp = st.file_uploader("Sube los archivos .LP", type=["lp"], accept_multiple_files=True)
-    archivo_excel = st.file_uploader("Sube el archivo Excel con hojas D3", type=["xlsx"])
 
     if st.button("Generar Dataframes"):
 
-        # Crear dataframe base desde 00:15
+        # 1️⃣ Crear dataframe base fijo desde 00:15
         inicio_mes = datetime(anio_seleccionado, numero_mes, 1, 0, 15)
         if numero_mes == 12:
             fin_mes = datetime(anio_seleccionado + 1, 1, 1)
@@ -58,10 +41,8 @@ with col1:
             fecha = datetime.strptime(fecha_str + " " + hora_str, "%d/%m/%Y %H:%M:%S")
             dia = fecha.day
             dia_semana = fecha.weekday()
-
             if dia in dias_feriados or dia_semana == 6:
                 return "HFP"
-
             hora = fecha.time()
             if hora >= datetime.strptime("23:15:00", "%H:%M:%S").time() or hora <= datetime.strptime("18:00:00", "%H:%M:%S").time():
                 return "HFP"
@@ -70,39 +51,29 @@ with col1:
 
         df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
 
-        # Factores conocidos
+        # 2️⃣ Procesar cada archivo LP individualmente
         factores = {
             "Acos 1.LP": 100,
             "Acos 2.LP": 100,
             "Nava 1.LP": 1,
             "Nava 2.LP": 200,
             "Ravira 1.LP": 120,
-            "Ravira 2.LP": 120,
-            "Canta 1.LP": 1,
-            "Canta 2.LP": 1
+            "Ravira 2.LP": 120
         }
 
-        # Inicializar dataframe LP con solo la base
-        df_lp = df_base.copy()
+        df_final = df_base.copy()
 
-        sumas_por_base = {}
-        dfs_individuales = {}
-
-        # Procesar cada archivo LP de forma separada
         for archivo in archivos_lp:
+            nombre_col = archivo.name
+
             contenido = archivo.read().decode('utf-8')
             lineas = contenido.splitlines()
 
-            # Buscar encabezado
             indice_inicio = None
             for i, linea in enumerate(lineas):
                 if linea.strip().startswith("Fecha/Hora"):
                     indice_inicio = i
                     break
-
-            if indice_inicio is None:
-                st.error(f"No se encontró 'Fecha/Hora' en {archivo.name}.")
-                continue
 
             tabla = "\n".join(lineas[indice_inicio:])
             df_temp = pd.read_csv(io.StringIO(tabla), sep=";", engine='python')
@@ -110,86 +81,35 @@ with col1:
             df_temp = df_temp.applymap(lambda x: x.strip() if isinstance(x, str) else x)
             df_temp = df_temp.dropna(axis=1, how='all')
 
-            # Separar fecha y hora
             df_temp['Fecha/Hora'] = pd.to_datetime(df_temp['Fecha/Hora'], format='%d/%m/%Y %H:%M:%S')
             df_temp['Fecha'] = df_temp['Fecha/Hora'].dt.strftime("%d/%m/%Y")
             df_temp['Hora'] = df_temp['Fecha/Hora'].dt.strftime("%H:%M:%S")
+            df_temp = df_temp[['Fecha', 'Hora', '+P/kW']]
+            df_temp = df_temp.rename(columns={'+P/kW': nombre_col})
 
-            nombre_columna = archivo.name
+            # Mostrar dataframe individual
+            st.subheader(f"Datos extraídos de {nombre_col}")
+            st.dataframe(df_temp)
 
-            df_archivo = df_temp[['Fecha', 'Hora', '+P/kW']].copy()
-            df_archivo = df_archivo.rename(columns={'+P/kW': nombre_columna})
+            # Hacer merge individual con df_base
+            df_merge = pd.merge(df_base, df_temp, on=['Fecha', 'Hora'], how='left')
+            df_merge[nombre_col] = df_merge[nombre_col].astype(float).fillna(0)
 
-            # Guardar dataframe individual para revisión
-            dfs_individuales[nombre_columna] = df_archivo
+            # Agregar al dataframe final
+            df_final[nombre_col] = df_merge[nombre_col]
 
-            # Hacer merge con df_base (NO con df_lp) para evitar combinaciones incorrectas
-            df_merge = pd.merge(df_base, df_archivo, on=['Fecha', 'Hora'], how='left')
-            df_merge[nombre_columna] = df_merge[nombre_columna].astype(float).fillna(0)
+            # Multiplicación por factor
+            factor = factores.get(nombre_col, 1)
+            df_final[f"{nombre_col} * Factor"] = df_final[nombre_col] * factor
 
-            # Agregar al df_lp
-            df_lp[nombre_columna] = df_merge[nombre_columna]
+        # 3️⃣ Agregar columnas de suma por nombre base (Acos, Nava, Ravira)
+        for nombre_base in ["Acos", "Nava", "Ravira"]:
+            cols_factor = [col for col in df_final.columns if nombre_base in col and "* Factor" in col]
+            df_final[f"{nombre_base} (Total)"] = df_final[cols_factor].sum(axis=1)
 
-            # Multiplicación por factor y suma por base
-            factor = factores.get(nombre_columna, 1)
-            nueva_col = f"{nombre_columna} * Factor"
-            df_lp[nueva_col] = df_lp[nombre_columna] * factor
-
-            nombre_base = re.sub(r'\d+', '', nombre_columna).replace('.LP', '').strip()
-            if nombre_base not in sumas_por_base:
-                sumas_por_base[nombre_base] = df_lp[nueva_col].copy()
-            else:
-                sumas_por_base[nombre_base] += df_lp[nueva_col]
-
-        # Agregar las columnas de suma por base
-        for nombre_base, suma in sumas_por_base.items():
-            df_lp[f"{nombre_base} (Total)"] = suma
-
-        st.subheader("Primer DataFrame: LP con factores y sumas")
-        st.dataframe(df_lp, use_container_width=True)
-
-        # Mostrar los dataframes individuales por archivo LP
-        st.subheader("Verificación: DataFrames individuales por archivo LP")
-        for nombre, df_individual in dfs_individuales.items():
-            st.markdown(f"#### {nombre}")
-            st.dataframe(df_individual, use_container_width=True)
-
-        # Segundo dataframe D3
-        df_d3 = df_base.copy()
-        hojas_objetivo = ["ACOS", "RAVIRA", "NAVA", "CANTA"]
-
-        if archivo_excel:
-            excel_data = pd.ExcelFile(archivo_excel)
-
-            for hoja in hojas_objetivo:
-                if hoja in excel_data.sheet_names:
-                    df_hoja = pd.read_excel(archivo_excel, sheet_name=hoja, header=None)
-
-                    df_hoja['FechaTmp'] = pd.to_datetime(df_hoja[1], errors='coerce')
-                    df_hoja['HoraTmp'] = df_hoja[2].astype(str).str.strip()
-
-                    df_hoja = df_hoja[df_hoja['FechaTmp'].notna() & df_hoja['HoraTmp'].str.match(r'^\d{2}:\d{2}(:\d{2})?$')]
-
-                    df_hoja['Fecha'] = df_hoja['FechaTmp'].dt.strftime('%d/%m/%Y')
-                    df_hoja['Hora'] = df_hoja['HoraTmp']
-
-                    df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4, 5]].copy()
-                    df_hoja_out.columns = ['Fecha', 'Hora', f'{hoja} 1 (D3)', f'{hoja} 2 (D3)', f'{hoja} 3 (D3)']
-
-                    df_d3 = pd.merge(df_d3, df_hoja_out, on=['Fecha', 'Hora'], how='left')
-
-            # Rellenar NaN con 0 en D3
-            d3_cols = [col for col in df_d3.columns if "(D3)" in col]
-            df_d3[d3_cols] = df_d3[d3_cols].astype(float).fillna(0)
-
-            # Agregar suma D3 Total
-            for hoja in hojas_objetivo:
-                col1 = f"{hoja} 1 (D3)"
-                col2 = f"{hoja} 2 (D3)"
-                df_d3[f"{hoja} (D3 Total)"] = df_d3[col1] + df_d3[col2]
-
-        st.subheader("Segundo DataFrame: Datos D3")
-        st.dataframe(df_d3, use_container_width=True)
+        # Mostrar resultado final
+        st.subheader("📊 Dataframe Final LP con ceros correctamente asignados")
+        st.dataframe(df_final, use_container_width=True)
 with col2:
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
