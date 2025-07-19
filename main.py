@@ -11,111 +11,140 @@ col1, col2 = st.columns(2)
 
 with col1:
 
-    meses = {
+st.title("Generación correcta del Primer DataFrame LP")
+
+# 🔧 Definición de meses
+meses = {
     "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
     "Mayo": 5, "Junio": 6, "Julio": 7, "Agosto": 8,
-    "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12}
-    
-    mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
-    numero_mes = meses[mes_seleccionado]
+    "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
+}
 
-    anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
+# 📥 Inputs
+mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
+numero_mes = meses[mes_seleccionado]
 
-    feriados_input = st.text_input("Días feriados (ejemplo: 5,7,15):")
-    dias_feriados = [int(x.strip()) for x in feriados_input.split(",")] if feriados_input else []
+anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
 
-    archivos_lp = st.file_uploader("Sube los archivos .LP", type=["lp"], accept_multiple_files=True)
+feriados_input = st.text_input("Días feriados del mes separados por comas (ejemplo: 5,7,15):")
 
-    if st.button("Generar Dataframes"):
+if feriados_input.strip() != "":
+    try:
+        dias_feriados = [int(x.strip()) for x in feriados_input.split(",")]
+    except:
+        st.error("Formato inválido.")
+        dias_feriados = []
+else:
+    dias_feriados = []
 
-        # 1️⃣ Crear dataframe base fijo desde 00:15
-        inicio_mes = datetime(anio_seleccionado, numero_mes, 1, 0, 15)
-        if numero_mes == 12:
-            fin_mes = datetime(anio_seleccionado + 1, 1, 1)
+archivos_lp = st.file_uploader("Sube los archivos .LP", type=["lp"], accept_multiple_files=True)
+
+if st.button("Generar Primer DataFrame"):
+
+    # 1️⃣ Generar estructura base
+    inicio_mes = datetime(anio_seleccionado, numero_mes, 1, 0, 15)
+    if numero_mes == 12:
+        fin_mes = datetime(anio_seleccionado + 1, 1, 1)
+    else:
+        fin_mes = datetime(anio_seleccionado, numero_mes + 1, 1)
+
+    fechas_completas = pd.date_range(start=inicio_mes, end=fin_mes - timedelta(minutes=15), freq="15min")
+
+    df_base = pd.DataFrame({
+        "Fecha": fechas_completas.strftime("%d/%m/%Y"),
+        "Hora": fechas_completas.strftime("%H:%M:%S")
+    })
+
+    # 2️⃣ Clasificación HP/HFP
+    def clasificar_hp_hfp(fecha_str, hora_str):
+        fecha = datetime.strptime(fecha_str + " " + hora_str, "%d/%m/%Y %H:%M:%S")
+        dia = fecha.day
+        dia_semana = fecha.weekday()
+
+        if dia in dias_feriados or dia_semana == 6:
+            return "HFP"
+
+        hora = fecha.time()
+        if hora >= datetime.strptime("23:15:00", "%H:%M:%S").time() or hora <= datetime.strptime("18:00:00", "%H:%M:%S").time():
+            return "HFP"
         else:
-            fin_mes = datetime(anio_seleccionado, numero_mes + 1, 1)
+            return "HP"
 
-        fechas_completas = pd.date_range(start=inicio_mes, end=fin_mes - timedelta(minutes=15), freq="15min")
+    df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
 
-        df_base = pd.DataFrame({
-            "Fecha": fechas_completas.strftime("%d/%m/%Y"),
-            "Hora": fechas_completas.strftime("%H:%M:%S")
-        })
+    # 3️⃣ Procesar cada archivo LP por separado y generar columnas
+    factores = {
+        "Acos 1.LP": 100,
+        "Acos 2.LP": 100,
+        "Nava 1.LP": 1,
+        "Nava 2.LP": 200,
+        "Ravira 1.LP": 120,
+        "Ravira 2.LP": 120
+    }
 
-        # Clasificación HP/HFP
-        def clasificar_hp_hfp(fecha_str, hora_str):
-            fecha = datetime.strptime(fecha_str + " " + hora_str, "%d/%m/%Y %H:%M:%S")
-            dia = fecha.day
-            dia_semana = fecha.weekday()
-            if dia in dias_feriados or dia_semana == 6:
-                return "HFP"
-            hora = fecha.time()
-            if hora >= datetime.strptime("23:15:00", "%H:%M:%S").time() or hora <= datetime.strptime("18:00:00", "%H:%M:%S").time():
-                return "HFP"
-            else:
-                return "HP"
+    df_final = df_base.copy()
 
-        df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
+    for archivo in archivos_lp:
+        nombre_columna = archivo.name
 
-        # 2️⃣ Procesar cada archivo LP individualmente
-        factores = {
-            "Acos 1.LP": 100,
-            "Acos 2.LP": 100,
-            "Nava 1.LP": 1,
-            "Nava 2.LP": 200,
-            "Ravira 1.LP": 120,
-            "Ravira 2.LP": 120
-        }
+        contenido = archivo.read().decode('utf-8')
+        lineas = contenido.splitlines()
 
-        df_final = df_base.copy()
+        # Buscar inicio de los datos
+        indice_inicio = None
+        for i, linea in enumerate(lineas):
+            if linea.strip().startswith("Fecha/Hora"):
+                indice_inicio = i
+                break
 
-        for archivo in archivos_lp:
-            nombre_col = archivo.name
+        if indice_inicio is None:
+            st.error(f"No se encontró 'Fecha/Hora' en {archivo.name}.")
+            continue
 
-            contenido = archivo.read().decode('utf-8')
-            lineas = contenido.splitlines()
+        datos = "\n".join(lineas[indice_inicio:])
+        df_temp = pd.read_csv(io.StringIO(datos), sep=";", engine='python')
+        df_temp.columns = [col.strip() for col in df_temp.columns]
+        df_temp = df_temp.applymap(lambda x: x.strip() if isinstance(x, str) else x)
 
-            indice_inicio = None
-            for i, linea in enumerate(lineas):
-                if linea.strip().startswith("Fecha/Hora"):
-                    indice_inicio = i
-                    break
+        # Tomamos solo Fecha/Hora y +P/kW
+        df_temp['Fecha/Hora'] = pd.to_datetime(df_temp['Fecha/Hora'], format='%d/%m/%Y %H:%M:%S')
+        df_temp['Fecha'] = df_temp['Fecha/Hora'].dt.strftime("%d/%m/%Y")
+        df_temp['Hora'] = df_temp['Fecha/Hora'].dt.strftime("%H:%M:%S")
+        df_temp = df_temp[['Fecha', 'Hora', '+P/kW']]
 
-            tabla = "\n".join(lineas[indice_inicio:])
-            df_temp = pd.read_csv(io.StringIO(tabla), sep=";", engine='python')
-            df_temp.columns = [col.strip() for col in df_temp.columns]
-            df_temp = df_temp.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-            df_temp = df_temp.dropna(axis=1, how='all')
+        # Ordenar por Fecha y Hora para visualizar bien
+        df_temp = df_temp.sort_values(by=['Fecha', 'Hora'])
 
-            df_temp['Fecha/Hora'] = pd.to_datetime(df_temp['Fecha/Hora'], format='%d/%m/%Y %H:%M:%S')
-            df_temp['Fecha'] = df_temp['Fecha/Hora'].dt.strftime("%d/%m/%Y")
-            df_temp['Hora'] = df_temp['Fecha/Hora'].dt.strftime("%H:%M:%S")
-            df_temp = df_temp[['Fecha', 'Hora', '+P/kW']]
-            df_temp = df_temp.rename(columns={'+P/kW': nombre_col})
+        # Mostrar dataframe individual para verificar
+        st.subheader(f"Datos extraídos de {archivo.name}")
+        st.dataframe(df_temp)
 
-            # Mostrar dataframe individual
-            st.subheader(f"Datos extraídos de {nombre_col}")
-            st.dataframe(df_temp)
+        # Hacer el merge solo con esta columna
+        df_merge = pd.merge(df_base[['Fecha', 'Hora']], df_temp, on=['Fecha', 'Hora'], how='left')
+        df_final[nombre_columna] = df_merge['+P/kW'].fillna(0)
 
-            # Hacer merge individual con df_base
-            df_merge = pd.merge(df_base, df_temp, on=['Fecha', 'Hora'], how='left')
-            df_merge[nombre_col] = df_merge[nombre_col].astype(float).fillna(0)
+    # 4️⃣ Aplicar factores y sumas por nombre base
+    sumas_por_base = {}
 
-            # Agregar al dataframe final
-            df_final[nombre_col] = df_merge[nombre_col]
+    for col in df_final.columns:
+        if col in ["Fecha", "Hora", "Horario"]:
+            continue
 
-            # Multiplicación por factor
-            factor = factores.get(nombre_col, 1)
-            df_final[f"{nombre_col} * Factor"] = df_final[nombre_col] * factor
+        factor = factores.get(col, 1)
+        df_final[f"{col}*Factor"] = df_final[col] * factor
 
-        # 3️⃣ Agregar columnas de suma por nombre base (Acos, Nava, Ravira)
-        for nombre_base in ["Acos", "Nava", "Ravira"]:
-            cols_factor = [col for col in df_final.columns if nombre_base in col and "* Factor" in col]
-            df_final[f"{nombre_base} (Total)"] = df_final[cols_factor].sum(axis=1)
+        nombre_base = col.split()[0]  # Ejemplo: "Acos"
+        if nombre_base not in sumas_por_base:
+            sumas_por_base[nombre_base] = df_final[f"{col}*Factor"].copy()
+        else:
+            sumas_por_base[nombre_base] += df_final[f"{col}*Factor"]
 
-        # Mostrar resultado final
-        st.subheader("📊 Dataframe Final LP con ceros correctamente asignados")
-        st.dataframe(df_final, use_container_width=True)
+    # Agregar columnas de suma
+    for nombre_base, suma in sumas_por_base.items():
+        df_final[f"{nombre_base} (Total)"] = suma
+
+    st.subheader("📊 Dataframe Final (Primer Box)")
+    st.dataframe(df_final)
 with col2:
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
