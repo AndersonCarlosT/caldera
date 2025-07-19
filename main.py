@@ -117,22 +117,23 @@ with col1:
             col_lp = archivo.name
             nombres_lp.append(col_lp)
 
-            # Merge SOLO con los datos de este archivo y la estructura base
+            # Hacer merge individual con el df_base para este archivo
             df_temp_match = df_temp[['Fecha', 'Hora', '+P/kW']].copy()
+            df_temp_match = df_temp_match.rename(columns={'+P/kW': col_lp})
+
             df_merged_individual = pd.merge(df_base[['Fecha', 'Hora']], df_temp_match, on=['Fecha', 'Hora'], how='left')
-            df_merged_individual = df_merged_individual.rename(columns={'+P/kW': col_lp})
             df_merged_individual[col_lp] = df_merged_individual[col_lp].astype(float).fillna(0)
 
-            # Agregar al dataframe principal sin mezclar datos
+            # Agregar la columna al df_lp sin mezclar datos
             df_lp[col_lp] = df_merged_individual[col_lp]
 
-            # Multiplicación por factor individual
+            # Multiplicación por factor
             factor = factores.get(col_lp, 1)
             nueva_col_factor = f"{col_lp} * Factor"
             df_lp[nueva_col_factor] = df_lp[col_lp] * factor
             columnas_factor[col_lp] = nueva_col_factor
 
-        # Suma por nombre base SIN mezclar datos
+        # Suma por base (sin mezclar columnas entre archivos)
         bases = set([re.sub(r'\d+', '', name).replace('.LP', '').strip() for name in nombres_lp])
 
         for base in bases:
