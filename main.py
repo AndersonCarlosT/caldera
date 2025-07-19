@@ -8,8 +8,6 @@ st.set_page_config(page_title="Comparador de Perfiles", layout="wide")
 st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (D3) + Factores de Multiplicación")
 
 col1, col2 = st.columns(2)
-
-
 with col1:
     st.header("Generación de Dataframes Base")
 
@@ -72,7 +70,7 @@ with col1:
 
         df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
 
-        # Iniciar dataframe LP con la estructura base
+        # Crear df_lp inicial con estructura base
         df_lp = df_base.copy()
 
         # Factores
@@ -116,15 +114,17 @@ with col1:
             col_lp = archivo.name
             nombres_lp.append(col_lp)
 
-            df_merge = df_temp[['Fecha', 'Hora', '+P/kW']].copy()
-            df_merge = df_merge.rename(columns={'+P/kW': col_lp})
+            # Crear columna propia sin hacer merge acumulativo
+            df_lp[col_lp] = 0  # Inicializa en cero
 
-            # Merge con la estructura base para evitar duplicados
-            df_lp = pd.merge(df_lp, df_merge, on=['Fecha', 'Hora'], how='left')
+            # Asigna valores donde hay match
+            idx_match = df_lp.set_index(['Fecha', 'Hora']).index.intersection(
+                df_temp.set_index(['Fecha', 'Hora']).index
+            )
 
-        # Rellenar NaN con 0 por cada columna LP
-        for col in nombres_lp:
-            df_lp[col] = df_lp[col].astype(float).fillna(0)
+            for fecha, hora in idx_match:
+                valor = df_temp.loc[(df_temp['Fecha'] == fecha) & (df_temp['Hora'] == hora), '+P/kW'].values[0]
+                df_lp.loc[(df_lp['Fecha'] == fecha) & (df_lp['Hora'] == hora), col_lp] = float(valor)
 
         # Multiplicación por factores y suma por nombre base
         sumas_por_base = {}
@@ -165,25 +165,24 @@ with col1:
                     df_hoja['Fecha'] = df_hoja['FechaTmp'].dt.strftime('%d/%m/%Y')
                     df_hoja['Hora'] = df_hoja['HoraTmp']
 
-                    df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4, 5]].copy()
-                    df_hoja_out.columns = ['Fecha', 'Hora', f'{hoja} 1 (D3)', f'{hoja} 2 (D3)', f'{hoja} 3 (D3)']
+                    df_d3[f'{hoja} 1 (D3)'] = 0
+                    df_d3[f'{hoja} 2 (D3)'] = 0
+                    df_d3[f'{hoja} 3 (D3)'] = 0
 
-                    df_d3 = pd.merge(df_d3, df_hoja_out, on=['Fecha', 'Hora'], how='left')
+                    idx_match = df_d3.set_index(['Fecha', 'Hora']).index.intersection(
+                        df_hoja.set_index(['Fecha', 'Hora']).index
+                    )
 
-            # Rellenar NaN con 0 en D3
-            d3_cols = [col for col in df_d3.columns if "(D3)" in col]
-            df_d3[d3_cols] = df_d3[d3_cols].astype(float).fillna(0)
+                    for fecha, hora in idx_match:
+                        fila = df_hoja.loc[(df_hoja['Fecha'] == fecha) & (df_hoja['Hora'] == hora)]
+                        df_d3.loc[(df_d3['Fecha'] == fecha) & (df_d3['Hora'] == hora), f'{hoja} 1 (D3)'] = fila.iloc[0, 3]
+                        df_d3.loc[(df_d3['Fecha'] == fecha) & (df_d3['Hora'] == hora), f'{hoja} 2 (D3)'] = fila.iloc[0, 4]
+                        df_d3.loc[(df_d3['Fecha'] == fecha) & (df_d3['Hora'] == hora), f'{hoja} 3 (D3)'] = fila.iloc[0, 5]
 
-            # Agregar suma D3 Total
-            for hoja in hojas_objetivo:
-                col1 = f"{hoja} 1 (D3)"
-                col2 = f"{hoja} 2 (D3)"
-                df_d3[f"{hoja} (D3 Total)"] = df_d3[col1] + df_d3[col2]
+                    df_d3[f"{hoja} (D3 Total)"] = df_d3[f'{hoja} 1 (D3)'] + df_d3[f'{hoja} 2 (D3)']
 
         st.subheader("Segundo DataFrame: Datos D3")
         st.dataframe(df_d3)
-
-
 with col2:
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
