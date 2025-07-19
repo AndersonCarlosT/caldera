@@ -10,24 +10,21 @@ st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (
 col1, col2 = st.columns(2)
 
 with col1:
-
-    st.title("Generación correcta del Primer DataFrame LP")
+    st.title("🗓️ Generador de Tabla Base con Archivos LP")
     
-    # 🔧 Definición de meses
+    # Inputs del usuario
     meses = {
         "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4,
         "Mayo": 5, "Junio": 6, "Julio": 7, "Agosto": 8,
         "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
     }
     
-    # 📥 Inputs
     mes_seleccionado = st.selectbox("Selecciona el mes", list(meses.keys()))
     numero_mes = meses[mes_seleccionado]
     
     anio_seleccionado = st.selectbox("Selecciona el año", list(range(2020, 2031)), index=5)
     
-    feriados_input = st.text_input("Días feriados del mes separados por comas (ejemplo: 5,7,15):")
-    
+    feriados_input = st.text_input("Días feriados del mes separados por comas (ejemplo: 5,10,15):")
     if feriados_input.strip() != "":
         try:
             dias_feriados = [int(x.strip()) for x in feriados_input.split(",")]
@@ -39,23 +36,24 @@ with col1:
     
     archivos_lp = st.file_uploader("Sube los archivos .LP", type=["lp"], accept_multiple_files=True)
     
-    if st.button("Generar Primer DataFrame"):
+    # Botón de generar
+    if st.button("Generar Tabla Final"):
     
-        # 1️⃣ Generar estructura base
+        # Crear estructura base de fechas y horas cada 15 min desde 00:15
         inicio_mes = datetime(anio_seleccionado, numero_mes, 1, 0, 15)
         if numero_mes == 12:
             fin_mes = datetime(anio_seleccionado + 1, 1, 1)
         else:
             fin_mes = datetime(anio_seleccionado, numero_mes + 1, 1)
     
-        fechas_completas = pd.date_range(start=inicio_mes, end=fin_mes - timedelta(minutes=15), freq="15min")
+        fechas_horas = pd.date_range(start=inicio_mes, end=fin_mes - timedelta(minutes=15), freq="15min")
     
         df_base = pd.DataFrame({
-            "Fecha": fechas_completas.strftime("%d/%m/%Y"),
-            "Hora": fechas_completas.strftime("%H:%M:%S")
+            "Fecha": fechas_horas.strftime("%d/%m/%Y"),
+            "Hora": fechas_horas.strftime("%H:%M:%S")
         })
     
-        # 2️⃣ Clasificación HP/HFP
+        # Columna HP / HFP
         def clasificar_hp_hfp(fecha_str, hora_str):
             fecha = datetime.strptime(fecha_str + " " + hora_str, "%d/%m/%Y %H:%M:%S")
             dia = fecha.day
@@ -65,32 +63,19 @@ with col1:
                 return "HFP"
     
             hora = fecha.time()
-            if hora >= datetime.strptime("23:15:00", "%H:%M:%S").time() or hora <= datetime.strptime("18:00:00", "%H:%M:%S").time():
-                return "HFP"
-            else:
+            if hora >= datetime.strptime("18:15:00", "%H:%M:%S").time() and hora <= datetime.strptime("23:00:00", "%H:%M:%S").time():
                 return "HP"
+            else:
+                return "HFP"
     
         df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
     
-        # 3️⃣ Procesar cada archivo LP por separado y generar columnas
-        factores = {
-            "Acos 1.LP": 100,
-            "Acos 2.LP": 100,
-            "Nava 1.LP": 1,
-            "Nava 2.LP": 200,
-            "Ravira 1.LP": 120,
-            "Ravira 2.LP": 120
-        }
-    
-        df_final = df_base.copy()
-    
+        # Procesar cada archivo LP y hacer merge con la base
         for archivo in archivos_lp:
-            nombre_columna = archivo.name
-    
             contenido = archivo.read().decode('utf-8')
             lineas = contenido.splitlines()
     
-            # Buscar inicio de los datos
+            # Buscar encabezado de datos
             indice_inicio = None
             for i, linea in enumerate(lineas):
                 if linea.strip().startswith("Fecha/Hora"):
@@ -101,50 +86,32 @@ with col1:
                 st.error(f"No se encontró 'Fecha/Hora' en {archivo.name}.")
                 continue
     
-            datos = "\n".join(lineas[indice_inicio:])
-            df_temp = pd.read_csv(io.StringIO(datos), sep=";", engine='python')
-            df_temp.columns = [col.strip() for col in df_temp.columns]
-            df_temp = df_temp.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+            datos_lp = "\n".join(lineas[indice_inicio:])
+            df_lp_temp = pd.read_csv(io.StringIO(datos_lp), sep=";", engine='python')
+            df_lp_temp.columns = [col.strip() for col in df_lp_temp.columns]
+            df_lp_temp = df_lp_temp.dropna(axis=1, how='all')
     
-            # Tomamos solo Fecha/Hora y +P/kW
-            df_temp['Fecha/Hora'] = pd.to_datetime(df_temp['Fecha/Hora'], format='%d/%m/%Y %H:%M:%S')
-            df_temp['Fecha'] = df_temp['Fecha/Hora'].dt.strftime("%d/%m/%Y")
-            df_temp['Hora'] = df_temp['Fecha/Hora'].dt.strftime("%H:%M:%S")
-            df_temp = df_temp[['Fecha', 'Hora', '+P/kW']]
+            # Limpiar y separar fecha y hora
+            df_lp_temp['Fecha/Hora'] = pd.to_datetime(df_lp_temp['Fecha/Hora'], format='%d/%m/%Y %H:%M:%S')
+            df_lp_temp['Fecha'] = df_lp_temp['Fecha/Hora'].dt.strftime("%d/%m/%Y")
+            df_lp_temp['Hora'] = df_lp_temp['Fecha/Hora'].dt.strftime("%H:%M:%S")
     
-            # Ordenar por Fecha y Hora para visualizar bien
-            df_temp = df_temp.sort_values(by=['Fecha', 'Hora'])
+            # Ordenar por fecha y hora (por si acaso)
+            df_lp_temp = df_lp_temp.sort_values(by='Fecha/Hora')
     
-            # Mostrar dataframe individual para verificar
-            st.subheader(f"Datos extraídos de {archivo.name}")
-            st.dataframe(df_temp)
+            # Obtener la columna de +P/kW y renombrar con el nombre del archivo
+            nombre_columna = archivo.name
+            df_datos = df_lp_temp[['Fecha', 'Hora', '+P/kW']].copy()
+            df_datos = df_datos.rename(columns={'+P/kW': nombre_columna})
     
-            # Hacer el merge solo con esta columna
-            df_merge = pd.merge(df_base[['Fecha', 'Hora']], df_temp, on=['Fecha', 'Hora'], how='left')
-            df_final[nombre_columna] = df_merge['+P/kW'].fillna(0)
+            # Hacer merge con la base
+            df_base = pd.merge(df_base, df_datos, on=['Fecha', 'Hora'], how='left')
     
-        # 4️⃣ Aplicar factores y sumas por nombre base
-        sumas_por_base = {}
+            # Rellenar con ceros donde no haya datos
+            df_base[nombre_columna] = df_base[nombre_columna].astype(float).fillna(0)
     
-        for col in df_final.columns:
-            if col in ["Fecha", "Hora", "Horario"]:
-                continue
-    
-            factor = factores.get(col, 1)
-            df_final[f"{col}*Factor"] = df_final[col] * factor
-    
-            nombre_base = col.split()[0]  # Ejemplo: "Acos"
-            if nombre_base not in sumas_por_base:
-                sumas_por_base[nombre_base] = df_final[f"{col}*Factor"].copy()
-            else:
-                sumas_por_base[nombre_base] += df_final[f"{col}*Factor"]
-    
-        # Agregar columnas de suma
-        for nombre_base, suma in sumas_por_base.items():
-            df_final[f"{nombre_base} (Total)"] = suma
-    
-        st.subheader("📊 Dataframe Final (Primer Box)")
-        st.dataframe(df_final)
+        st.subheader("Tabla Final Generada")
+        st.dataframe(df_base, use_container_width=True)
 with col2:
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
