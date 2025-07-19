@@ -10,31 +10,34 @@ st.title("📊 Comparador de Perfiles de Carga + Datos adicionales desde Excel (
 col1, col2 = st.columns(2)
 
 with col1:
-    st.title("📊 Visualizador de Datos LP por Intervalos de 15 Minutos")
+    st.title("🔌 Visualizador de Perfil de Carga (.LP) con Intervalos de 15 Minutos")
     
-    # Selección de mes y año
+    # Selección de año y mes
     anio = st.selectbox("Selecciona el Año", list(range(2020, datetime.now().year + 1)), index=datetime.now().year - 2020)
     mes = st.selectbox("Selecciona el Mes", list(range(1, 13)), index=datetime.now().month - 1)
     
-    # Generar dataframe base fijo
+    # Función para generar el dataframe base
     def generar_base(anio, mes):
         inicio = datetime(anio, mes, 1)
         if mes == 12:
             fin = datetime(anio + 1, 1, 1)
         else:
             fin = datetime(anio, mes + 1, 1)
-            
+    
         fechas = []
         horas = []
     
         fecha_actual = inicio
         while fecha_actual < fin:
             for i in range(96):  # 96 intervalos de 15 minutos
-                hora_intervalo = (datetime.min + timedelta(minutes=15*(i+1))).time() if i < 95 else datetime.min.time()
-                fechas.append(fecha_actual.date())
+                if i < 95:
+                    hora_intervalo = (datetime.min + timedelta(minutes=15*(i+1))).time()
+                else:
+                    hora_intervalo = datetime.min.time()  # 00:00 al final del día
+                fechas.append(fecha_actual.strftime("%d/%m/%Y"))
                 horas.append(hora_intervalo.strftime("%H:%M"))
             fecha_actual += timedelta(days=1)
-        
+    
         df_base = pd.DataFrame({
             "Fecha": fechas,
             "Hora": horas
@@ -46,39 +49,68 @@ with col1:
     st.write("### DataFrame Base Generado:")
     st.dataframe(df_base)
     
+    # Función para leer archivo .LP
+    def leer_archivo_lp(archivo):
+        contenido = archivo.read().decode("utf-8").splitlines()
+    
+        # Buscar línea donde empiezan los datos
+        for i, linea in enumerate(contenido):
+            if linea.strip().startswith("Fecha/Hora"):
+                inicio_datos = i + 1
+                break
+    
+        # Leer los datos desde la línea identificada
+        datos = "\n".join(contenido[inicio_datos:])
+    
+        df_lp = pd.read_csv(StringIO(datos), sep=";", engine="python", skipinitialspace=True)
+    
+        # Limpiar columnas
+        df_lp.columns = [col.strip() for col in df_lp.columns]
+    
+        # Extraer solo Fecha/Hora y +P/kW
+        df_lp = df_lp[["Fecha/Hora", "+P/kW"]]
+    
+        # Separar fecha y hora en formato requerido
+        df_lp["Fecha"] = pd.to_datetime(df_lp["Fecha/Hora"], dayfirst=True).dt.strftime("%d/%m/%Y")
+        df_lp["Hora"] = pd.to_datetime(df_lp["Fecha/Hora"], dayfirst=True).dt.strftime("%H:%M")
+    
+        # Renombrar columna de datos
+        df_lp.rename(columns={"+P/kW": "Dato"}, inplace=True)
+    
+        # Dejar solo las columnas necesarias
+        df_lp = df_lp[["Fecha", "Hora", "Dato"]]
+    
+        return df_lp
+    
     # Subir archivo LP
-    archivo_lp = st.file_uploader("📂 Sube el archivo LP (Excel o CSV)", type=["xlsx", "csv"])
+    archivo_lp = st.file_uploader("📂 Sube el archivo LP (.LP)", type=["LP", "lp"])
     
     if archivo_lp is not None:
-        # Leer el archivo LP
-        if archivo_lp.name.endswith('.xlsx'):
-            df_lp = pd.read_excel(archivo_lp)
-        else:
-            df_lp = pd.read_csv(archivo_lp)
+        df_lp = leer_archivo_lp(archivo_lp)
     
-        # Asegurarse que las columnas estén correctamente definidas
-        df_lp.columns = ["Fecha", "Hora", "Dato"]
-        
-        # Convertir Fecha a datetime.date si es necesario
-        df_lp["Fecha"] = pd.to_datetime(df_lp["Fecha"]).dt.date
-        df_lp["Hora"] = df_lp["Hora"].apply(lambda x: x if isinstance(x, str) else str(x))
+        st.write("### Datos extraídos del archivo LP:")
+        st.dataframe(df_lp)
     
-        # Hacer el merge
+        # Hacer merge con el dataframe base
         df_resultado = pd.merge(df_base, df_lp, on=["Fecha", "Hora"], how="left")
-        
-        # Rellenar NaN con 0
+    
+        # Rellenar valores faltantes con 0
         df_resultado["Dato"] = df_resultado["Dato"].fillna(0)
     
-        st.write("### DataFrame Final (Match realizado):")
+        st.write("### DataFrame Final con Match:")
         st.dataframe(df_resultado)
     
-        # Descargar como Excel
-        output = pd.ExcelWriter("LP_match.xlsx", engine='xlsxwriter')
-        df_resultado.to_excel(output, index=False, sheet_name="Match")
-        output.close()
+        # Descargar resultado en Excel
+        output = StringIO()
+        df_resultado.to_csv(output, index=False, sep=";", decimal=".", encoding="utf-8")
+        output.seek(0)
     
-        with open("LP_match.xlsx", "rb") as file:
-            st.download_button("📥 Descargar Excel", data=file, file_name=f"LP_{anio}_{mes:02d}_match.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button(
+            label="📥 Descargar CSV",
+            data=output,
+            file_name=f"Perfil_Carga_{anio}_{mes:02d}.csv",
+            mime="text/csv"
+        )
 with col2:
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
