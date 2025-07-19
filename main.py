@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
 st.set_page_config(page_title="Comparador de Perfiles", layout="wide")
