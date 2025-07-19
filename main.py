@@ -36,7 +36,6 @@ with col1:
         dias_feriados = []
 
     archivos_lp = st.file_uploader("Sube los archivos .LP", type=["lp"], accept_multiple_files=True)
-    archivo_excel = st.file_uploader("Sube el archivo Excel con hojas D3", type=["xlsx"])
 
     if st.button("Generar Dataframes"):
 
@@ -71,10 +70,7 @@ with col1:
 
         df_base["Horario"] = df_base.apply(lambda row: clasificar_hp_hfp(row["Fecha"], row["Hora"]), axis=1)
 
-        # Iniciar dataframe LP con la estructura base
-        df_lp = df_base.copy()
-
-        # Factores
+        # Factores fijos
         factores = {
             "Acos 1.LP": 100,
             "Acos 2.LP": 100,
@@ -86,14 +82,13 @@ with col1:
             "Canta 2.LP": 1
         }
 
-        columnas_factor = {}
+        df_lp = df_base.copy()
         nombres_lp = []
 
         for archivo in archivos_lp:
             contenido = archivo.read().decode('utf-8')
             lineas = contenido.splitlines()
 
-            # Buscar encabezado
             indice_inicio = None
             for i, linea in enumerate(lineas):
                 if linea.strip().startswith("Fecha/Hora"):
@@ -117,69 +112,36 @@ with col1:
             col_lp = archivo.name
             nombres_lp.append(col_lp)
 
-            # Hacer merge individual con el df_base para este archivo
-            df_temp_match = df_temp[['Fecha', 'Hora', '+P/kW']].copy()
-            df_temp_match = df_temp_match.rename(columns={'+P/kW': col_lp})
+            df_individual = df_base.copy()
+            df_merge = df_temp[['Fecha', 'Hora', '+P/kW']].copy()
+            df_merge = df_merge.rename(columns={'+P/kW': col_lp})
 
-            df_merged_individual = pd.merge(df_base[['Fecha', 'Hora']], df_temp_match, on=['Fecha', 'Hora'], how='left')
-            df_merged_individual[col_lp] = df_merged_individual[col_lp].astype(float).fillna(0)
+            # Hacer merge individual y rellenar con 0 solo en su propia columna
+            df_individual = pd.merge(df_individual, df_merge, on=['Fecha', 'Hora'], how='left')
+            df_individual[col_lp] = df_individual[col_lp].astype(float).fillna(0)
 
-            # Agregar la columna al df_lp sin mezclar datos
-            df_lp[col_lp] = df_merged_individual[col_lp]
+            # Agregar la columna al df_lp principal
+            df_lp[col_lp] = df_individual[col_lp]
 
-            # Multiplicación por factor
-            factor = factores.get(col_lp, 1)
-            nueva_col_factor = f"{col_lp} * Factor"
-            df_lp[nueva_col_factor] = df_lp[col_lp] * factor
-            columnas_factor[col_lp] = nueva_col_factor
+        # Multiplicación por factores y suma por nombre base
+        sumas_por_base = {}
 
-        # Suma por base (sin mezclar columnas entre archivos)
-        bases = set([re.sub(r'\d+', '', name).replace('.LP', '').strip() for name in nombres_lp])
+        for nombre_lp in nombres_lp:
+            factor = factores.get(nombre_lp, 1)
+            nueva_col = f"{nombre_lp} * Factor"
+            df_lp[nueva_col] = df_lp[nombre_lp] * factor
 
-        for base in bases:
-            columnas_base = [col for col in nombres_lp if base in col]
-            columnas_base_factor = [columnas_factor[col] for col in columnas_base]
-            df_lp[f"{base} (Total)"] = df_lp[columnas_base_factor].sum(axis=1)
+            nombre_base = re.sub(r'\d+', '', nombre_lp).replace('.LP', '').strip()
+            if nombre_base not in sumas_por_base:
+                sumas_por_base[nombre_base] = df_lp[nueva_col].copy()
+            else:
+                sumas_por_base[nombre_base] += df_lp[nueva_col]
+
+        for nombre_base, suma in sumas_por_base.items():
+            df_lp[f"{nombre_base} (Total)"] = suma
 
         st.subheader("Primer DataFrame: LP con factores y sumas")
         st.dataframe(df_lp)
-
-        # Segundo dataframe D3
-        df_d3 = df_base.copy()
-        hojas_objetivo = ["ACOS", "RAVIRA", "NAVA", "CANTA"]
-
-        if archivo_excel:
-            excel_data = pd.ExcelFile(archivo_excel)
-
-            for hoja in hojas_objetivo:
-                if hoja in excel_data.sheet_names:
-                    df_hoja = pd.read_excel(archivo_excel, sheet_name=hoja, header=None)
-
-                    df_hoja['FechaTmp'] = pd.to_datetime(df_hoja[1], errors='coerce')
-                    df_hoja['HoraTmp'] = df_hoja[2].astype(str).str.strip()
-
-                    df_hoja = df_hoja[df_hoja['FechaTmp'].notna() & df_hoja['HoraTmp'].str.match(r'^\d{2}:\d{2}(:\d{2})?$')]
-
-                    df_hoja['Fecha'] = df_hoja['FechaTmp'].dt.strftime('%d/%m/%Y')
-                    df_hoja['Hora'] = df_hoja['HoraTmp']
-
-                    df_hoja_out = df_hoja[['Fecha', 'Hora', 3, 4, 5]].copy()
-                    df_hoja_out.columns = ['Fecha', 'Hora', f'{hoja} 1 (D3)', f'{hoja} 2 (D3)', f'{hoja} 3 (D3)']
-
-                    df_d3 = pd.merge(df_d3, df_hoja_out, on=['Fecha', 'Hora'], how='left')
-
-            # Rellenar NaN con 0 en D3
-            d3_cols = [col for col in df_d3.columns if "(D3)" in col]
-            df_d3[d3_cols] = df_d3[d3_cols].astype(float).fillna(0)
-
-            # Agregar suma D3 Total
-            for hoja in hojas_objetivo:
-                col1 = f"{hoja} 1 (D3)"
-                col2 = f"{hoja} 2 (D3)"
-                df_d3[f"{hoja} (D3 Total)"] = df_d3[col1] + df_d3[col2]
-
-        st.subheader("Segundo DataFrame: Datos D3")
-        st.dataframe(df_d3)
 
 with col2:
 
