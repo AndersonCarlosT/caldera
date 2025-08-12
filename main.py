@@ -110,21 +110,8 @@ with col1:
             st.write("### Datos extraídos del archivo LP:")
             st.dataframe(df_lp)
         
-            # FILTRAR por el mes y año seleccionados antes de hacer el merge
-            df_lp_filtrado = df_lp.copy()
-            df_lp_filtrado["Mes"] = pd.to_datetime(df_lp_filtrado["Fecha"], dayfirst=True).dt.month
-            df_lp_filtrado["Año"] = pd.to_datetime(df_lp_filtrado["Fecha"], dayfirst=True).dt.year
-
-            df_lp_filtrado = df_lp_filtrado[(df_lp_filtrado["Mes"] == mes) & (df_lp_filtrado["Año"] == anio)]
-
-            # Eliminar columnas auxiliares
-            df_lp_filtrado = df_lp_filtrado[["Fecha", "Hora", "Dato"]]
-        
-            st.write("### Datos filtrados del LP (solo mes y año seleccionados):")
-            st.dataframe(df_lp_filtrado)
-
-            # Hacer merge estrictamente por Fecha y Hora
-            df_resultado = pd.merge(df_base, df_lp_filtrado, on=["Fecha", "Hora"], how="left")
+            # Hacer merge con el dataframe base
+            df_resultado = pd.merge(df_base, df_lp, on=["Fecha", "Hora"], how="left")
         
             # Rellenar valores faltantes con 0
             df_resultado["Dato"] = df_resultado["Dato"].fillna(0)
