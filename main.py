@@ -49,55 +49,37 @@ with col1:
     st.write("### DataFrame Base Generado:")
     st.dataframe(df_base)
     
-    # Función robusta para leer archivo .LP con encabezado correcto
+    # Función para leer archivo .LP
     def leer_archivo_lp(archivo):
         contenido = archivo.read().decode("utf-8").splitlines()
-
-        # Buscar línea donde empiezan los datos y obtener encabezados
+    
+        # Buscar línea donde empiezan los datos
         for i, linea in enumerate(contenido):
             if linea.strip().startswith("Fecha/Hora"):
-                encabezados = [h.strip() for h in linea.strip().split(";")]
                 inicio_datos = i + 1
                 break
-        else:
-            st.error("❌ No se encontró la línea 'Fecha/Hora' en el archivo. Verifica el formato del archivo .LP.")
-            return None
-
-        # Leer los datos desde la línea identificada sin encabezado
+    
+        # Leer los datos desde la línea identificada
         datos = "\n".join(contenido[inicio_datos:])
-
-        df_lp = pd.read_csv(io.StringIO(datos), sep=";", header=None, engine="python", skipinitialspace=True)
-
-        # Asignar encabezados manualmente
-        df_lp.columns = encabezados
-
-        # Limpiar columnas de espacios
+    
+        df_lp = pd.read_csv(StringIO(datos), sep=";", engine="python", skipinitialspace=True)
+    
+        # Limpiar columnas
         df_lp.columns = [col.strip() for col in df_lp.columns]
-
-        # Buscar columnas relevantes
-        col_fechahora = [col for col in df_lp.columns if 'Fecha/Hora' in col]
-        col_pkw = [col for col in df_lp.columns if '+P/kW' in col]
-
-        if len(col_fechahora) == 0 or len(col_pkw) == 0:
-            st.error(f"❌ No se encontraron las columnas 'Fecha/Hora' o '+P/kW' en el archivo. Columnas encontradas: {df_lp.columns.tolist()}")
-            return None
-
-        col_fechahora = col_fechahora[0]
-        col_pkw = col_pkw[0]
-
-        # Extraer solo las columnas necesarias
-        df_lp = df_lp[[col_fechahora, col_pkw]]
-
+    
+        # Extraer solo Fecha/Hora y +P/kW
+        df_lp = df_lp[["Fecha/Hora", "+P/kW"]]
+    
         # Separar fecha y hora en formato requerido
-        df_lp["Fecha"] = pd.to_datetime(df_lp[col_fechahora], dayfirst=True).dt.strftime("%d/%m/%Y")
-        df_lp["Hora"] = pd.to_datetime(df_lp[col_fechahora], dayfirst=True).dt.strftime("%H:%M")
-
+        df_lp["Fecha"] = pd.to_datetime(df_lp["Fecha/Hora"], dayfirst=True).dt.strftime("%d/%m/%Y")
+        df_lp["Hora"] = pd.to_datetime(df_lp["Fecha/Hora"], dayfirst=True).dt.strftime("%H:%M")
+    
         # Renombrar columna de datos
-        df_lp.rename(columns={col_pkw: "Dato"}, inplace=True)
-
+        df_lp.rename(columns={"+P/kW": "Dato"}, inplace=True)
+    
         # Dejar solo las columnas necesarias
         df_lp = df_lp[["Fecha", "Hora", "Dato"]]
-
+    
         return df_lp
     
     # Subir archivo LP
@@ -106,30 +88,29 @@ with col1:
     if archivo_lp is not None:
         df_lp = leer_archivo_lp(archivo_lp)
     
-        if df_lp is not None:
-            st.write("### Datos extraídos del archivo LP:")
-            st.dataframe(df_lp)
-        
-            # Hacer merge con el dataframe base
-            df_resultado = pd.merge(df_base, df_lp, on=["Fecha", "Hora"], how="left")
-        
-            # Rellenar valores faltantes con 0
-            df_resultado["Dato"] = df_resultado["Dato"].fillna(0)
-        
-            st.write("### DataFrame Final con Match:")
-            st.dataframe(df_resultado)
-        
-            # Descargar resultado en CSV
-            output = io.StringIO()
-            df_resultado.to_csv(output, index=False, sep=";", decimal=".", encoding="utf-8")
-            output.seek(0)
-        
-            st.download_button(
-                label="📥 Descargar CSV",
-                data=output,
-                file_name=f"Perfil_Carga_{anio}_{mes:02d}.csv",
-                mime="text/csv"
-            )
+        st.write("### Datos extraídos del archivo LP:")
+        st.dataframe(df_lp)
+    
+        # Hacer merge con el dataframe base
+        df_resultado = pd.merge(df_base, df_lp, on=["Fecha", "Hora"], how="left")
+    
+        # Rellenar valores faltantes con 0
+        df_resultado["Dato"] = df_resultado["Dato"].fillna(0)
+    
+        st.write("### DataFrame Final con Match:")
+        st.dataframe(df_resultado)
+    
+        # Descargar resultado en Excel
+        output = StringIO()
+        df_resultado.to_csv(output, index=False, sep=";", decimal=".", encoding="utf-8")
+        output.seek(0)
+    
+        st.download_button(
+            label="📥 Descargar CSV",
+            data=output,
+            file_name=f"Perfil_Carga_{anio}_{mes:02d}.csv",
+            mime="text/csv"
+        )
 with col2:
 
     archivo_g1 = st.file_uploader("Sube el Excel G1", type=["xlsx"], key="g1")
